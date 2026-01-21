@@ -1,49 +1,172 @@
 # =============================================================================
 # MÓDULO DE DADOS - ATLAS DA VIOLÊNCIA E ORÇAMENTO DE SEGURANÇA PÚBLICA
 # =============================================================================
-# Este módulo processa dados reais de fontes oficiais brasileiras:
-# - Atlas da Violência (IPEA/FBSP): Taxas de homicídios por UF
-# - Anuário Brasileiro de Segurança Pública (FBSP): Orçamentos estaduais
-# - IBGE: População por UF
+# Este módulo processa dados de fontes oficiais brasileiras:
+# - Homicídios por UF (2013-2023): dados/dados.novos/Dados Homicidios 2013-2023.xlsx
+# - Gastos com segurança pública por UF (2013-2023): dados/dados.novos/gastos_YYYY_filtrado.csv
 #
-# Fontes:
-# - https://www.ipea.gov.br/atlasviolencia/
-# - https://forumseguranca.org.br/anuario-brasileiro-seguranca-publica/
+# IMPORTANTE: Este módulo usa EXCLUSIVAMENTE os arquivos da pasta dados/dados.novos
 # =============================================================================
 
 import pandas as pd
 import numpy as np
 from pathlib import Path
 
-# Diretório base dos dados (relativo ao módulo)
-DADOS_DIR = Path(__file__).parent / "dados"
+# Diretório base dos dados NOVOS (relativo ao módulo)
+DADOS_DIR = Path(__file__).parent / "dados" / "dados.novos"
+
+# Anos disponíveis nos novos dados
+ANOS_DISPONIVEIS = list(range(2013, 2024))  # 2013 a 2023
 
 
-def carregar_mortes_populacao() -> pd.DataFrame:
+def carregar_gastos_por_ano(ano: int) -> pd.DataFrame:
     """
-    Carrega dados de mortes violentas e população por UF (2022).
+    Carrega dados de gastos com segurança pública de um ano específico.
     
-    Fonte: Atlas da Violência / IBGE
+    Fonte: dados/dados.novos/gastos_YYYY_filtrado.csv
+    
+    Args:
+        ano: Ano dos dados (2013 a 2023)
     
     Returns:
-        DataFrame com colunas: cod, uf, mortes, populacao
+        DataFrame com colunas: sigla, cod_uf, populacao, gasto_seguranca, ano
     """
-    arquivo = DADOS_DIR / "mortes_populacao_2022.csv"
+    arquivo = DADOS_DIR / f"gastos_{ano}_filtrado.csv"
     
-    df = pd.read_csv(arquivo)
+    if not arquivo.exists():
+        raise FileNotFoundError(f"Arquivo não encontrado: {arquivo}")
+    
+    df = pd.read_csv(arquivo, sep=';')
     
     # Padroniza nomes de colunas
     df = df.rename(columns={
-        'cod': 'cod_uf',
-        'uf': 'sigla',
-        'período': 'ano',
-        'mortes': 'mortes_violentas',
-        'UF': 'sigla_dup',  # coluna duplicada no CSV original
-        'Populacao': 'populacao'
+        'UF': 'sigla',
+        'Cod.IBGE': 'cod_uf',
+        'População': 'populacao',
+        'Valor': 'gasto_seguranca'
     })
     
-    # Remove coluna duplicada
-    df = df.drop(columns=['sigla_dup'], errors='ignore')
+    # Converte valor (pode estar com vírgula como separador decimal)
+    if df['gasto_seguranca'].dtype == object:
+        df['gasto_seguranca'] = df['gasto_seguranca'].str.replace('.', '', regex=False)
+        df['gasto_seguranca'] = df['gasto_seguranca'].str.replace(',', '.', regex=False)
+        df['gasto_seguranca'] = pd.to_numeric(df['gasto_seguranca'], errors='coerce')
+    
+    df['ano'] = ano
+    
+    # Seleciona colunas relevantes
+    return df[['sigla', 'cod_uf', 'populacao', 'gasto_seguranca', 'ano']]
+
+
+def carregar_gastos_todos_anos() -> pd.DataFrame:
+    """
+    Carrega e consolida gastos de todos os anos disponíveis (2013-2023).
+    
+    Returns:
+        DataFrame com gastos de todos os anos
+    """
+    dfs = []
+    for ano in ANOS_DISPONIVEIS:
+        try:
+            df_ano = carregar_gastos_por_ano(ano)
+            dfs.append(df_ano)
+        except FileNotFoundError:
+            print(f"Aviso: Dados de gastos para {ano} não encontrados, pulando...")
+    
+    if not dfs:
+        raise ValueError("Nenhum arquivo de gastos encontrado em dados/dados.novos")
+    
+    return pd.concat(dfs, ignore_index=True)
+
+
+def carregar_homicidios() -> pd.DataFrame:
+    """
+    Carrega dados de homicídios por UF (2013-2023).
+    
+    Fonte: dados/dados.novos/Dados Homicidios 2013-2023.xlsx
+    
+    Returns:
+        DataFrame no formato longo: sigla, ano, homicidios
+    """
+    arquivo = DADOS_DIR / "Dados Homicidios 2013-2023.xlsx"
+    
+    if not arquivo.exists():
+        raise FileNotFoundError(f"Arquivo não encontrado: {arquivo}")
+    
+    # Lê o Excel sem header (vamos processar manualmente)
+    df_raw = pd.read_excel(arquivo, header=None)
+    
+    # A estrutura do arquivo:
+    # Linha 0: Título "Brasil e Unidades da Federação"
+    # Linhas 1-3: Vazias
+    # Linha 4: NaN, 2023, 2022, 2021, ..., 2013 (os anos nas colunas 1-11)
+    # Linha 5: Brasil, totais...
+    # Linhas 6-32: Estados (Acre, Alagoas, ..., Tocantins)
+    
+    # Extrai os anos da linha 4 (colunas 1-11)
+    anos_row = df_raw.iloc[4, 1:12].tolist()
+    anos = [int(a) for a in anos_row if pd.notna(a)]
+    
+    # Extrai dados dos estados (linhas 6 em diante, excluindo Brasil na linha 5)
+    # Pegamos apenas as primeiras 12 colunas (estado + 11 anos)
+    df_estados = df_raw.iloc[6:33, 0:12].copy()
+    
+    # Define nomes das colunas
+    novos_nomes = ['estado'] + [str(a) for a in anos]
+    df_estados.columns = novos_nomes
+    
+    # Remove linhas vazias
+    df_estados = df_estados.dropna(subset=['estado'])
+    
+    # Remove notas numéricas dos nomes dos estados (ex: "Minas Gerais (5)")
+    df_estados['estado'] = df_estados['estado'].astype(str).str.replace(r'\s*\(\d+\)\s*', '', regex=True).str.strip()
+    
+    # Transforma para formato longo
+    anos_cols = [str(ano) for ano in anos]
+    df_long = df_estados.melt(
+        id_vars=['estado'],
+        value_vars=anos_cols,
+        var_name='ano',
+        value_name='homicidios'
+    )
+    
+    df_long['ano'] = df_long['ano'].astype(int)
+    df_long['homicidios'] = pd.to_numeric(df_long['homicidios'], errors='coerce')
+    
+    # Adiciona sigla do estado
+    estado_para_sigla = _mapeamento_estados_siglas()
+    df_long['sigla'] = df_long['estado'].map(estado_para_sigla)
+    
+    return df_long[['sigla', 'estado', 'ano', 'homicidios']]
+
+
+def carregar_mortes_populacao(ano: int = 2022) -> pd.DataFrame:
+    """
+    Carrega dados de mortes violentas e população por UF para um ano específico.
+    
+    Usa os novos dados de dados/dados.novos.
+    
+    Args:
+        ano: Ano dos dados (padrão: 2022)
+    
+    Returns:
+        DataFrame com colunas: sigla, estado, populacao, mortes_violentas, taxa_mortes_100k
+    """
+    df_gastos = carregar_gastos_por_ano(ano)
+    df_homicidios = carregar_homicidios()
+    
+    # Filtra homicídios pelo ano
+    df_hom_ano = df_homicidios[df_homicidios['ano'] == ano].copy()
+    
+    # Merge gastos com homicídios
+    df = pd.merge(
+        df_gastos[['sigla', 'cod_uf', 'populacao']],
+        df_hom_ano[['sigla', 'estado', 'homicidios']],
+        on='sigla',
+        how='left'
+    )
+    
+    df = df.rename(columns={'homicidios': 'mortes_violentas'})
     
     # Calcula taxa de mortes por 100 mil habitantes
     df['taxa_mortes_100k'] = (df['mortes_violentas'] / df['populacao'] * 100000).round(2)
@@ -53,68 +176,68 @@ def carregar_mortes_populacao() -> pd.DataFrame:
 
 def carregar_taxa_homicidios_historico() -> pd.DataFrame:
     """
-    Carrega série histórica de taxa de homicídios de jovens (1989-2021).
+    Carrega série histórica de taxa de homicídios (2013-2023).
     
-    Fonte: Atlas da Violência - IPEA
+    Usa os novos dados de dados/dados.novos.
     
     Returns:
-        DataFrame com colunas: cod_uf, nome, ano, taxa_homicidios
+        DataFrame com colunas: sigla, estado, ano, homicidios, taxa_homicidios_100k
     """
-    arquivo = DADOS_DIR / "taxa_homicidios_jovens.csv"
+    df_homicidios = carregar_homicidios()
+    df_gastos = carregar_gastos_todos_anos()
     
-    df = pd.read_csv(arquivo, sep=';')
+    # Merge para obter população por ano
+    df = pd.merge(
+        df_homicidios,
+        df_gastos[['sigla', 'ano', 'populacao']],
+        on=['sigla', 'ano'],
+        how='left'
+    )
     
-    df = df.rename(columns={
-        'cod': 'cod_uf',
-        'nome': 'estado',
-        'período': 'ano',
-        'valor': 'taxa_homicidios_jovens'
-    })
+    # Calcula taxa por 100k habitantes
+    df['taxa_homicidios_100k'] = (df['homicidios'] / df['populacao'] * 100000).round(2)
     
     return df
 
 
-def carregar_orcamento_seguranca() -> pd.DataFrame:
+def carregar_orcamento_seguranca(ano: int = 2022) -> pd.DataFrame:
     """
-    Carrega dados de orçamento de segurança pública por UF (2021-2022).
+    Carrega dados de orçamento de segurança pública por UF para um ano específico.
     
-    Fonte: Anuário Brasileiro de Segurança Pública 2023 (FBSP)
-    Tabela 54: Despesas realizadas com a Função Segurança Pública
+    Fonte: dados/dados.novos/gastos_YYYY_filtrado.csv
     
-    Os valores estão em R$ constantes de dezembro/2022 (corrigidos pelo IPCA).
+    Args:
+        ano: Ano dos dados (padrão: 2022)
     
     Returns:
-        DataFrame com colunas: estado, orcamento_2021, orcamento_2022, variacao_pct
+        DataFrame com colunas: sigla, estado, orcamento, orcamento_milhoes
     """
-    arquivo = DADOS_DIR / "anuario_fbsp_2023.xlsx"
+    df = carregar_gastos_por_ano(ano)
     
-    # Lê a tabela 54 do Anuário
-    df_raw = pd.read_excel(arquivo, sheet_name='T54', header=None)
+    # Adiciona nome do estado
+    siglas_estados = _mapeamento_siglas_estados()
+    df['estado'] = df['sigla'].map(siglas_estados)
     
-    # A estrutura da tabela:
-    # Linha 14-40: Dados por UF (Acre até Tocantins)
-    # Coluna 0: Nome do estado
-    # Coluna 13: Total despesas 2021
-    # Coluna 14: Total despesas 2022
-    # Coluna 15: Variação %
+    df = df.rename(columns={'gasto_seguranca': f'orcamento_{ano}'})
+    df[f'orcamento_{ano}_milhoes'] = (df[f'orcamento_{ano}'] / 1e6).round(2)
     
-    # Extrai apenas as linhas dos estados (14 a 40)
-    df_estados = df_raw.iloc[14:41, [0, 13, 14, 15]].copy()
-    
-    df_estados.columns = ['estado', 'orcamento_2021', 'orcamento_2022', 'variacao_pct']
-    
-    # Remove notas como "(1) (2)" dos nomes dos estados
-    df_estados['estado'] = df_estados['estado'].str.replace(r'\s*\(\d+\)\s*', '', regex=True).str.strip()
-    
-    # Converte para numérico
-    df_estados['orcamento_2021'] = pd.to_numeric(df_estados['orcamento_2021'], errors='coerce')
-    df_estados['orcamento_2022'] = pd.to_numeric(df_estados['orcamento_2022'], errors='coerce')
-    df_estados['variacao_pct'] = pd.to_numeric(df_estados['variacao_pct'], errors='coerce')
-    
-    # Converte de R$ para R$ milhões para facilitar leitura
-    df_estados['orcamento_2022_milhoes'] = (df_estados['orcamento_2022'] / 1e6).round(2)
-    
-    return df_estados.reset_index(drop=True)
+    return df[['sigla', 'estado', 'cod_uf', 'populacao', f'orcamento_{ano}', f'orcamento_{ano}_milhoes']]
+
+
+def _mapeamento_estados_siglas() -> dict:
+    """
+    Retorna dicionário de mapeamento entre nomes completos e siglas dos estados.
+    """
+    return {
+        'Acre': 'AC', 'Alagoas': 'AL', 'Amapá': 'AP', 'Amazonas': 'AM',
+        'Bahia': 'BA', 'Ceará': 'CE', 'Distrito Federal': 'DF',
+        'Espírito Santo': 'ES', 'Goiás': 'GO', 'Maranhão': 'MA',
+        'Mato Grosso': 'MT', 'Mato Grosso do Sul': 'MS', 'Minas Gerais': 'MG',
+        'Pará': 'PA', 'Paraíba': 'PB', 'Paraná': 'PR', 'Pernambuco': 'PE',
+        'Piauí': 'PI', 'Rio de Janeiro': 'RJ', 'Rio Grande do Norte': 'RN',
+        'Rio Grande do Sul': 'RS', 'Rondônia': 'RO', 'Roraima': 'RR',
+        'Santa Catarina': 'SC', 'São Paulo': 'SP', 'Sergipe': 'SE', 'Tocantins': 'TO'
+    }
 
 
 def _mapeamento_siglas_estados() -> dict:
@@ -149,12 +272,17 @@ def _mapeamento_regioes() -> dict:
     }
 
 
-def carregar_dados_consolidados() -> pd.DataFrame:
+def carregar_dados_consolidados(ano: int = 2022) -> pd.DataFrame:
     """
     Consolida todos os dados em um único DataFrame pronto para otimização.
     
     Este é o principal ponto de entrada para o modelo de otimização.
-    Combina dados de mortes/população com orçamento de segurança.
+    Combina dados de homicídios/população com gastos de segurança.
+    
+    IMPORTANTE: Usa EXCLUSIVAMENTE os arquivos de dados/dados.novos
+    
+    Args:
+        ano: Ano base para análise (padrão: 2022)
     
     Também calcula a ELASTICIDADE estimada de redução de crime:
     - A elasticidade representa quanto a taxa de crime reduz para cada
@@ -165,33 +293,39 @@ def carregar_dados_consolidados() -> pd.DataFrame:
     Returns:
         DataFrame consolidado com todas as variáveis para otimização
     """
-    # Carrega os dados base
-    df_mortes = carregar_mortes_populacao()
-    df_orcamento = carregar_orcamento_seguranca()
+    # Carrega os dados base dos NOVOS arquivos
+    df_gastos = carregar_gastos_por_ano(ano)
+    df_homicidios = carregar_homicidios()
+    
+    # Filtra homicídios pelo ano
+    df_hom_ano = df_homicidios[df_homicidios['ano'] == ano].copy()
     
     # Cria mapeamentos
     siglas_estados = _mapeamento_siglas_estados()
     regioes = _mapeamento_regioes()
     
-    # Adiciona nome do estado ao df_mortes
-    df_mortes['estado'] = df_mortes['sigla'].map(siglas_estados)
-    df_mortes['regiao'] = df_mortes['sigla'].map(regioes)
+    # Adiciona nome do estado e região
+    df_gastos['estado'] = df_gastos['sigla'].map(siglas_estados)
+    df_gastos['regiao'] = df_gastos['sigla'].map(regioes)
     
-    # Merge com dados de orçamento (pelo nome do estado)
+    # Merge com dados de homicídios
     df = pd.merge(
-        df_mortes,
-        df_orcamento[['estado', 'orcamento_2022', 'orcamento_2022_milhoes', 'variacao_pct']],
-        on='estado',
+        df_gastos,
+        df_hom_ano[['sigla', 'homicidios']],
+        on='sigla',
         how='left'
     )
     
-    # Trata valores faltantes de orçamento (ex: Tocantins não está no Anuário)
-    # Usa a média dos estados da mesma região como estimativa
-    for idx, row in df[df['orcamento_2022'].isna()].iterrows():
-        regiao = row['regiao']
-        media_regiao = df[df['regiao'] == regiao]['orcamento_2022'].mean()
-        df.loc[idx, 'orcamento_2022'] = media_regiao
-        df.loc[idx, 'orcamento_2022_milhoes'] = media_regiao / 1_000_000
+    df = df.rename(columns={
+        'homicidios': 'mortes_violentas',
+        'gasto_seguranca': 'orcamento_2022'
+    })
+    
+    # Calcula taxa de mortes por 100 mil habitantes
+    df['taxa_mortes_100k'] = (df['mortes_violentas'] / df['populacao'] * 100000).round(2)
+    
+    # Converte de R$ para R$ milhões para facilitar leitura
+    df['orcamento_2022_milhoes'] = (df['orcamento_2022'] / 1e6).round(2)
     
     # Calcula gasto per capita (R$ por habitante)
     df['gasto_per_capita'] = (df['orcamento_2022'] / df['populacao']).round(2)
@@ -206,12 +340,6 @@ def carregar_dados_consolidados() -> pd.DataFrame:
     # 1. Estados com maior gasto per capita tendem a ter menor taxa de crime
     # 2. Estados com histórico de redução de crime têm maior "eficiência"
     # 3. Valores são calibrados pela literatura (0.05 a 0.15)
-    #
-    # Fórmula simplificada:
-    # elasticidade = α + β * (1 / gasto_per_capita_normalizado)
-    #
-    # Onde estados com menor gasto atual têm maior potencial de redução
-    # (rendimentos decrescentes do investimento em segurança)
     # ==========================================================================
     
     # Normaliza gasto per capita (0 a 1)

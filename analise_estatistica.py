@@ -42,20 +42,19 @@ class ResultadoRegressao:
 
 def carregar_serie_historica() -> pd.DataFrame:
     """
-    Carrega a série histórica completa de taxa de homicídios (1989-2022).
+    Carrega a série histórica completa de taxa de homicídios (2013-2023).
+    
+    Usa os novos dados de dados/dados.novos.
     
     Returns:
-        DataFrame com colunas: cod_uf, estado, ano, taxa_homicidios
+        DataFrame com colunas: sigla, estado, ano, taxa_homicidios
     """
-    dados_dir = Path(__file__).parent / "dados"
-    arquivo = dados_dir / "taxa_homicidios_jovens.csv"
+    # Importa do módulo dados para usar os dados novos
+    from dados import carregar_taxa_homicidios_historico
     
-    df = pd.read_csv(arquivo, sep=';')
+    df = carregar_taxa_homicidios_historico()
     df = df.rename(columns={
-        'cod': 'cod_uf',
-        'nome': 'estado',
-        'período': 'ano',
-        'valor': 'taxa_homicidios'
+        'taxa_homicidios_100k': 'taxa_homicidios'
     })
     
     return df

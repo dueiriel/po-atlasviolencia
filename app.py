@@ -24,7 +24,7 @@ import requests
 from pathlib import Path
 
 # Importa módulos locais
-from dados import carregar_dados_consolidados, obter_coordenadas_estados
+from dados import carregar_dados_consolidados, obter_coordenadas_estados, ANOS_DISPONIVEIS
 from otimizacao import (
     otimizar_alocacao, 
     ResultadoOtimizacao,
@@ -85,14 +85,43 @@ st.markdown("""
 # CACHE DE DADOS
 # =============================================================================
 @st.cache_data
-def carregar_dados():
+def carregar_dados(ano: int = 2022):
     """
-    Carrega e cacheia os dados consolidados.
-    Usa elasticidade calculada por regressão da série histórica 1989-2022.
+    Carrega e cacheia os dados consolidados para um ano específico.
+    Usa elasticidade calculada por regressão da série histórica.
+    
+    Args:
+        ano: Ano dos dados (2013-2023)
     """
-    df = carregar_dados_consolidados()
+    df = carregar_dados_consolidados(ano=ano)
     # Substitui elasticidade estimada pela calculada via regressão linear
     df = atualizar_elasticidade_dados(df)
+    return df
+
+
+@st.cache_data
+def carregar_dados_todos_anos():
+    """
+    Carrega dados de todos os anos disponíveis (2013-2023) para análises temporais.
+    """
+    from dados import carregar_gastos_todos_anos, carregar_homicidios
+    
+    df_gastos = carregar_gastos_todos_anos()
+    df_homicidios = carregar_homicidios()
+    
+    # Merge gastos com homicídios
+    df = pd.merge(
+        df_gastos,
+        df_homicidios[['sigla', 'ano', 'homicidios']],
+        on=['sigla', 'ano'],
+        how='left'
+    )
+    
+    # Calcula taxa por 100k
+    df['taxa_mortes_100k'] = (df['homicidios'] / df['populacao'] * 100000).round(2)
+    df['gasto_milhoes'] = (df['gasto_seguranca'] / 1e6).round(2)
+    df['gasto_per_capita'] = (df['gasto_seguranca'] / df['populacao']).round(2)
+    
     return df
 
 
@@ -172,8 +201,19 @@ def obter_multiperiodo_padrao(_df):
 # SIDEBAR - EXPLICAÇÃO DO MODELO
 # =============================================================================
 def render_sidebar():
-    """Renderiza a sidebar com explicação educacional do modelo."""
+    """Renderiza a sidebar com explicação educacional do modelo e seletor de ano."""
     
+    st.sidebar.title("📅 Seleção de Ano")
+    
+    # Seletor de ano
+    ano_selecionado = st.sidebar.selectbox(
+        "Ano de análise:",
+        options=sorted(ANOS_DISPONIVEIS, reverse=True),
+        index=1,  # Default: 2022
+        help="Selecione o ano para visualizar os dados. Disponível de 2013 a 2023."
+    )
+    
+    st.sidebar.markdown("---")
     st.sidebar.title("📚 Explicação do Modelo")
     
     with st.sidebar.expander("🎯 Objetivo", expanded=True):
@@ -229,23 +269,25 @@ def render_sidebar():
     - [Anuário de Segurança Pública](https://forumseguranca.org.br/) (FBSP)
     - IBGE (População)
     """)
+    
+    return ano_selecionado
 
 
 # =============================================================================
 # ABA 1: DASHBOARD
 # =============================================================================
-def render_dashboard(df: pd.DataFrame, geojson):
+def render_dashboard(df: pd.DataFrame, geojson, ano: int):
     """Renderiza a aba de Dashboard com visualizações dos dados atuais."""
     
-    st.header("📊 Dashboard - Situação Atual")
+    st.header(f"📊 Dashboard - Situação em {ano}")
     
     with st.expander("ℹ️ **Sobre esta aba** - Clique para expandir", expanded=False):
-        st.markdown("""
+        st.markdown(f"""
         ### O que é o Dashboard?
         
-        Esta aba apresenta uma **visão geral da situação atual** de segurança pública no Brasil,
+        Esta aba apresenta uma **visão geral da situação** de segurança pública no Brasil,
         utilizando dados consolidados do **Atlas da Violência (IPEA)** e do **Anuário de Segurança 
-        Pública (FBSP)** referentes ao ano de 2022.
+        Pública (FBSP)** referentes ao ano de **{ano}**.
         
         #### Dados exibidos:
         - **Mortes Violentas**: Número absoluto de homicídios e mortes violentas intencionais
@@ -260,11 +302,11 @@ def render_dashboard(df: pd.DataFrame, geojson):
         - **Por região**: Agrupamento dos estados por região geográfica
         
         #### Fonte dos dados:
-        - Atlas da Violência: Série histórica 1989-2022 (IPEA/FBSP)
-        - Anuário Brasileiro de Segurança Pública 2023 (FBSP)
+        - Atlas da Violência: Série histórica 2013-2023 (IPEA/FBSP)
+        - Anuário Brasileiro de Segurança Pública (FBSP)
         """)
     
-    st.markdown("Visualização dos dados de violência e orçamento de segurança pública por estado (2022).")
+    st.markdown(f"Visualização dos dados de violência e orçamento de segurança pública por estado ({ano}).")
     
     # Métricas resumo
     col1, col2, col3, col4 = st.columns(4)
@@ -274,7 +316,7 @@ def render_dashboard(df: pd.DataFrame, geojson):
         st.metric(
             label="Total de Mortes Violentas",
             value=f"{total_mortes:,.0f}",
-            help="Número total de mortes violentas em 2022"
+            help=f"Número total de mortes violentas em {ano}"
         )
     
     with col2:
@@ -290,7 +332,7 @@ def render_dashboard(df: pd.DataFrame, geojson):
         st.metric(
             label="Orçamento Total (R$ bi)",
             value=f"{total_orcamento/1000:.1f}",
-            help="Soma dos orçamentos de segurança de todos os estados"
+            help=f"Soma dos orçamentos de segurança de todos os estados em {ano}"
         )
     
     with col4:
@@ -488,10 +530,10 @@ def render_dashboard(df: pd.DataFrame, geojson):
 # =============================================================================
 # ABA 2: OTIMIZAÇÃO
 # =============================================================================
-def render_otimizacao(df: pd.DataFrame):
+def render_otimizacao(df: pd.DataFrame, ano: int = 2022):
     """Renderiza a aba de Otimização com controles e resultados."""
     
-    st.header("⚙️ Otimização - Alocação de Recursos")
+    st.header(f"⚙️ Otimização - Alocação de Recursos ({ano})")
     
     with st.expander("ℹ️ **Sobre esta aba** - Clique para expandir", expanded=False):
         st.markdown("""
@@ -698,7 +740,7 @@ def render_otimizacao(df: pd.DataFrame):
 # =============================================================================
 # ABA 3: COMPARATIVO
 # =============================================================================
-def render_comparativo(df: pd.DataFrame):
+def render_comparativo(df: pd.DataFrame, ano: int = 2022):
     """Renderiza a aba de Comparativo Antes vs. Depois."""
     
     st.header("📊 Comparativo - Antes vs. Depois")
@@ -910,12 +952,12 @@ def render_comparativo(df: pd.DataFrame):
 # =============================================================================
 # ABA 4: ANÁLISE DE SENSIBILIDADE
 # =============================================================================
-def render_sensibilidade(df: pd.DataFrame):
+def render_sensibilidade(df: pd.DataFrame, ano: int = 2022):
     """
     Renderiza a aba de análise de sensibilidade.
     Inclui gráfico tornado, shadow prices e análise de cenários.
     """
-    st.header("🔍 Análise de Sensibilidade")
+    st.header(f"🔍 Análise de Sensibilidade ({ano})")
     
     with st.expander("ℹ️ **Sobre esta aba** - Clique para expandir", expanded=False):
         st.markdown("""
@@ -1087,7 +1129,7 @@ def render_sensibilidade(df: pd.DataFrame):
 # =============================================================================
 # ABA 5: SIMULAÇÃO MONTE CARLO
 # =============================================================================
-def render_monte_carlo(df: pd.DataFrame):
+def render_monte_carlo(df: pd.DataFrame, ano: int = 2022):
     """
     Renderiza a aba de simulação Monte Carlo.
     Quantifica incerteza nos resultados via simulação estocástica.
@@ -1243,7 +1285,7 @@ def render_monte_carlo(df: pd.DataFrame):
 # =============================================================================
 # ABA 6: BACKTESTING
 # =============================================================================
-def render_backtesting(df: pd.DataFrame):
+def render_backtesting(df: pd.DataFrame, ano: int = 2022):
     """
     Renderiza a aba de backtesting.
     Valida o modelo usando dados históricos.
@@ -1385,7 +1427,7 @@ def render_backtesting(df: pd.DataFrame):
 # =============================================================================
 # ABA 7: MODELO MULTI-PERÍODO
 # =============================================================================
-def render_multi_periodo(df: pd.DataFrame):
+def render_multi_periodo(df: pd.DataFrame, ano: int = 2022):
     """
     Renderiza a aba de otimização multi-período.
     Planejamento de investimentos ao longo de vários anos.
@@ -1563,11 +1605,11 @@ def render_multi_periodo(df: pd.DataFrame):
 # =============================================================================
 # ABA 8: CONCLUSÕES E EFICIÊNCIA DOS INVESTIMENTOS
 # =============================================================================
-def render_conclusoes(df: pd.DataFrame):
+def render_conclusoes(df: pd.DataFrame, ano: int = 2022):
     """
     Renderiza a aba de Conclusões com análise de eficiência de investimentos por estado.
     """
-    st.header("📋 Conclusões - Eficiência dos Investimentos")
+    st.header(f"📋 Conclusões - Eficiência dos Investimentos ({ano})")
     
     with st.expander("ℹ️ **Sobre esta aba** - Clique para expandir", expanded=False):
         st.markdown("""
@@ -1951,16 +1993,16 @@ def main():
     
     st.markdown("---")
     
-    # Carrega dados
+    # Renderiza sidebar e obtém o ano selecionado
+    ano_selecionado = render_sidebar()
+    
+    # Carrega dados do ano selecionado
     try:
-        df = carregar_dados()
+        df = carregar_dados(ano=ano_selecionado)
         geojson = carregar_geojson_brasil()
     except Exception as e:
         st.error(f"Erro ao carregar dados: {e}")
         st.stop()
-    
-    # Renderiza sidebar
-    render_sidebar()
     
     # Abas principais - 8 abas com todas as funcionalidades
     tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
@@ -1975,28 +2017,28 @@ def main():
     ])
     
     with tab1:
-        render_dashboard(df, geojson)
+        render_dashboard(df, geojson, ano_selecionado)
     
     with tab2:
-        render_otimizacao(df)
+        render_otimizacao(df, ano_selecionado)
     
     with tab3:
-        render_comparativo(df)
+        render_comparativo(df, ano_selecionado)
     
     with tab4:
-        render_sensibilidade(df)
+        render_sensibilidade(df, ano_selecionado)
     
     with tab5:
-        render_monte_carlo(df)
+        render_monte_carlo(df, ano_selecionado)
     
     with tab6:
-        render_backtesting(df)
+        render_backtesting(df, ano_selecionado)
     
     with tab7:
-        render_multi_periodo(df)
+        render_multi_periodo(df, ano_selecionado)
     
     with tab8:
-        render_conclusoes(df)
+        render_conclusoes(df, ano_selecionado)
     
     # Footer
     st.markdown("---")
