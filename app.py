@@ -1,0 +1,799 @@
+# =============================================================================
+# APLICAÇÃO STREAMLIT - OTIMIZAÇÃO DE RECURSOS DE SEGURANÇA PÚBLICA
+# =============================================================================
+# Trabalho Acadêmico - Pesquisa Operacional
+#
+# Esta aplicação permite:
+# 1. Visualizar dados atuais de violência e orçamento por estado (Dashboard)
+# 2. Calcular alocação ótima de recursos (Otimização)
+# 3. Comparar cenários antes e depois (Comparativo)
+#
+# Autor: [Seu Nome]
+# Disciplina: Pesquisa Operacional
+# =============================================================================
+
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import json
+import requests
+from pathlib import Path
+
+# Importa módulos locais
+from dados import carregar_dados_consolidados, obter_coordenadas_estados
+from otimizacao import (
+    otimizar_alocacao, 
+    ResultadoOtimizacao,
+    gerar_formulacao_latex,
+    explicar_elasticidade
+)
+
+# =============================================================================
+# CONFIGURAÇÃO DA PÁGINA
+# =============================================================================
+st.set_page_config(
+    page_title="Otimização de Segurança Pública",
+    page_icon="🔐",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# CSS customizado para melhor visualização
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #1f4e79;
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+    .metric-card {
+        background-color: #f0f2f6;
+        border-radius: 10px;
+        padding: 1rem;
+        margin: 0.5rem 0;
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 2rem;
+    }
+    .stTabs [data-baseweb="tab"] {
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
+# =============================================================================
+# CACHE DE DADOS
+# =============================================================================
+@st.cache_data
+def carregar_dados():
+    """Carrega e cacheia os dados consolidados."""
+    return carregar_dados_consolidados()
+
+
+@st.cache_data
+def carregar_geojson_brasil():
+    """
+    Carrega GeoJSON dos estados brasileiros para o mapa coroplético.
+    Fonte: Instituto Brasileiro de Geografia e Estatística (IBGE)
+    """
+    url = "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/brazil-states.geojson"
+    
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            return response.json()
+    except:
+        pass
+    
+    # Fallback: retorna None se não conseguir carregar
+    return None
+
+
+# =============================================================================
+# SIDEBAR - EXPLICAÇÃO DO MODELO
+# =============================================================================
+def render_sidebar():
+    """Renderiza a sidebar com explicação educacional do modelo."""
+    
+    st.sidebar.title("📚 Explicação do Modelo")
+    
+    with st.sidebar.expander("🎯 Objetivo", expanded=True):
+        st.markdown("""
+        **Problema:** Dado um orçamento suplementar limitado, como distribuí-lo 
+        entre os estados para **maximizar a redução de crimes**?
+        
+        **Método:** Programação Linear resolvida pelo algoritmo **Simplex**.
+        """)
+    
+    with st.sidebar.expander("🧮 Formulação Matemática"):
+        st.markdown("**Variáveis de Decisão:**")
+        st.latex(r"x_i = \text{Investimento adicional no estado } i")
+        
+        st.markdown("**Função Objetivo:**")
+        st.latex(r"\min \sum_{i=1}^{n} C_i \cdot \left(1 - \varepsilon_i \cdot \frac{x_i}{O_i}\right)")
+        
+        st.markdown("**Restrições:**")
+        st.latex(r"\sum_{i=1}^{n} x_i \leq B \quad \text{(orçamento total)}")
+        st.latex(r"L_i \leq x_i \leq U_i \quad \text{(limites por estado)}")
+        
+        st.markdown("""
+        Onde:
+        - $C_i$ = crimes no estado $i$
+        - $ε_i$ = elasticidade
+        - $O_i$ = orçamento atual
+        - $B$ = orçamento disponível
+        """)
+    
+    with st.sidebar.expander("📊 Elasticidade Crime-Gasto"):
+        st.markdown(explicar_elasticidade())
+    
+    with st.sidebar.expander("🔧 Método de Solução"):
+        st.markdown("""
+        ### Algoritmo Simplex
+        
+        O **Simplex** é o método mais usado para resolver problemas de 
+        Programação Linear. Desenvolvido por George Dantzig em 1947.
+        
+        **Como funciona:**
+        1. Começa em um vértice do poliedro de soluções viáveis
+        2. Move-se para vértices adjacentes que melhorem a F.O.
+        3. Para quando não há mais melhoria possível (ótimo!)
+        
+        **Implementação:** Usamos a biblioteca `PuLP` com o solver 
+        `CBC` (COIN-OR Branch and Cut), que é open-source e eficiente.
+        """)
+    
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("""
+    **📖 Fontes dos Dados:**
+    - [Atlas da Violência](https://www.ipea.gov.br/atlasviolencia/) (IPEA)
+    - [Anuário de Segurança Pública](https://forumseguranca.org.br/) (FBSP)
+    - IBGE (População)
+    """)
+
+
+# =============================================================================
+# ABA 1: DASHBOARD
+# =============================================================================
+def render_dashboard(df: pd.DataFrame, geojson):
+    """Renderiza a aba de Dashboard com visualizações dos dados atuais."""
+    
+    st.header("📊 Dashboard - Situação Atual")
+    st.markdown("Visualização dos dados de violência e orçamento de segurança pública por estado (2022).")
+    
+    # Métricas resumo
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        total_mortes = df['mortes_violentas'].sum()
+        st.metric(
+            label="Total de Mortes Violentas",
+            value=f"{total_mortes:,.0f}",
+            help="Número total de mortes violentas em 2022"
+        )
+    
+    with col2:
+        media_taxa = df['taxa_mortes_100k'].mean()
+        st.metric(
+            label="Taxa Média (por 100 mil)",
+            value=f"{media_taxa:.1f}",
+            help="Média da taxa de mortes por 100 mil habitantes"
+        )
+    
+    with col3:
+        total_orcamento = df['orcamento_2022_milhoes'].sum()
+        st.metric(
+            label="Orçamento Total (R$ bi)",
+            value=f"{total_orcamento/1000:.1f}",
+            help="Soma dos orçamentos de segurança de todos os estados"
+        )
+    
+    with col4:
+        media_gasto_pc = df['gasto_per_capita'].mean()
+        st.metric(
+            label="Gasto Médio Per Capita",
+            value=f"R$ {media_gasto_pc:.0f}",
+            help="Média do gasto per capita em segurança"
+        )
+    
+    st.markdown("---")
+    
+    # Mapa e gráficos
+    col_mapa, col_grafico = st.columns([1.2, 1])
+    
+    with col_mapa:
+        st.subheader("🗺️ Mapa de Calor - Taxa de Mortes por 100 mil hab.")
+        
+        # Prepara dados para o mapa
+        df_mapa = df.copy()
+        
+        if geojson:
+            # Mapa coroplético com GeoJSON
+            fig_mapa = px.choropleth(
+                df_mapa,
+                geojson=geojson,
+                locations='estado',
+                featureidkey="properties.name",
+                color='taxa_mortes_100k',
+                color_continuous_scale='YlOrRd',
+                hover_name='estado',
+                hover_data={
+                    'taxa_mortes_100k': ':.1f',
+                    'mortes_violentas': ':,.0f',
+                    'gasto_per_capita': ':,.0f',
+                    'estado': False
+                },
+                labels={
+                    'taxa_mortes_100k': 'Taxa por 100k',
+                    'mortes_violentas': 'Mortes',
+                    'gasto_per_capita': 'Gasto per capita'
+                }
+            )
+            fig_mapa.update_geos(
+                fitbounds="locations",
+                visible=False
+            )
+        else:
+            # Fallback: mapa de pontos se não conseguir carregar GeoJSON
+            coords = obter_coordenadas_estados()
+            df_mapa = pd.merge(df_mapa, coords, on='sigla')
+            
+            fig_mapa = px.scatter_geo(
+                df_mapa,
+                lat='latitude',
+                lon='longitude',
+                color='taxa_mortes_100k',
+                size='mortes_violentas',
+                hover_name='estado',
+                color_continuous_scale='YlOrRd',
+                scope='south america',
+                size_max=40
+            )
+            fig_mapa.update_geos(
+                center=dict(lat=-15, lon=-55),
+                projection_scale=3
+            )
+        
+        fig_mapa.update_layout(
+            margin=dict(l=0, r=0, t=0, b=0),
+            height=450,
+            coloraxis_colorbar=dict(
+                title="Taxa/100k",
+                tickformat=".0f"
+            )
+        )
+        st.plotly_chart(fig_mapa, use_container_width=True)
+    
+    with col_grafico:
+        st.subheader("📈 Top 10 Estados - Maior Taxa de Violência")
+        
+        top10 = df.nlargest(10, 'taxa_mortes_100k').sort_values('taxa_mortes_100k')
+        
+        fig_bar = px.bar(
+            top10,
+            x='taxa_mortes_100k',
+            y='sigla',
+            orientation='h',
+            color='taxa_mortes_100k',
+            color_continuous_scale='YlOrRd',
+            text='taxa_mortes_100k',
+            labels={'taxa_mortes_100k': 'Taxa por 100 mil', 'sigla': 'Estado'}
+        )
+        fig_bar.update_traces(texttemplate='%{text:.1f}', textposition='outside')
+        fig_bar.update_layout(
+            height=450,
+            showlegend=False,
+            coloraxis_showscale=False,
+            xaxis_title="Taxa de Mortes por 100 mil hab.",
+            yaxis_title=""
+        )
+        st.plotly_chart(fig_bar, use_container_width=True)
+    
+    # Segunda linha de gráficos
+    st.markdown("---")
+    col_scatter, col_regiao = st.columns(2)
+    
+    with col_scatter:
+        st.subheader("💰 Relação: Gasto Per Capita × Taxa de Violência")
+        
+        fig_scatter = px.scatter(
+            df,
+            x='gasto_per_capita',
+            y='taxa_mortes_100k',
+            size='populacao',
+            color='regiao',
+            hover_name='estado',
+            text='sigla',
+            labels={
+                'gasto_per_capita': 'Gasto Per Capita (R$)',
+                'taxa_mortes_100k': 'Taxa por 100 mil',
+                'regiao': 'Região',
+                'populacao': 'População'
+            }
+        )
+        fig_scatter.update_traces(textposition='top center', textfont_size=9)
+        fig_scatter.update_layout(height=400)
+        st.plotly_chart(fig_scatter, use_container_width=True)
+    
+    with col_regiao:
+        st.subheader("🗺️ Comparativo por Região")
+        
+        df_regiao = df.groupby('regiao').agg({
+            'mortes_violentas': 'sum',
+            'populacao': 'sum',
+            'orcamento_2022_milhoes': 'sum'
+        }).reset_index()
+        
+        df_regiao['taxa_regiao'] = df_regiao['mortes_violentas'] / df_regiao['populacao'] * 100000
+        df_regiao['gasto_pc_regiao'] = df_regiao['orcamento_2022_milhoes'] * 1e6 / df_regiao['populacao']
+        
+        fig_regiao = make_subplots(
+            rows=1, cols=2,
+            subplot_titles=("Taxa por 100 mil", "Gasto Per Capita"),
+            specs=[[{"type": "bar"}, {"type": "bar"}]]
+        )
+        
+        fig_regiao.add_trace(
+            go.Bar(
+                x=df_regiao['regiao'],
+                y=df_regiao['taxa_regiao'],
+                marker_color=['#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#1f77b4'],
+                name='Taxa'
+            ),
+            row=1, col=1
+        )
+        
+        fig_regiao.add_trace(
+            go.Bar(
+                x=df_regiao['regiao'],
+                y=df_regiao['gasto_pc_regiao'],
+                marker_color=['#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#1f77b4'],
+                name='Gasto PC'
+            ),
+            row=1, col=2
+        )
+        
+        fig_regiao.update_layout(height=400, showlegend=False)
+        st.plotly_chart(fig_regiao, use_container_width=True)
+    
+    # Tabela de dados
+    st.markdown("---")
+    with st.expander("📋 Ver Tabela de Dados Completa"):
+        st.dataframe(
+            df[[
+                'sigla', 'estado', 'regiao', 'populacao', 
+                'mortes_violentas', 'taxa_mortes_100k',
+                'orcamento_2022_milhoes', 'gasto_per_capita', 
+                'elasticidade', 'indice_prioridade'
+            ]].style.format({
+                'populacao': '{:,.0f}',
+                'mortes_violentas': '{:,.0f}',
+                'taxa_mortes_100k': '{:.1f}',
+                'orcamento_2022_milhoes': '{:,.1f}',
+                'gasto_per_capita': 'R$ {:,.0f}',
+                'elasticidade': '{:.4f}',
+                'indice_prioridade': '{:.2f}'
+            }).background_gradient(subset=['taxa_mortes_100k'], cmap='YlOrRd'),
+            use_container_width=True,
+            height=400
+        )
+
+
+# =============================================================================
+# ABA 2: OTIMIZAÇÃO
+# =============================================================================
+def render_otimizacao(df: pd.DataFrame):
+    """Renderiza a aba de Otimização com controles e resultados."""
+    
+    st.header("⚙️ Otimização - Alocação de Recursos")
+    st.markdown("""
+    Configure os parâmetros abaixo e clique em **Calcular** para encontrar 
+    a alocação ótima de recursos que minimiza o número de crimes esperados.
+    """)
+    
+    # Controles de entrada
+    st.markdown("### 📝 Parâmetros do Modelo")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        orcamento_disponivel = st.slider(
+            "💰 Orçamento Suplementar (R$ bilhões)",
+            min_value=1.0,
+            max_value=20.0,
+            value=5.0,
+            step=0.5,
+            help="Valor total disponível para distribuição entre os estados"
+        )
+        orcamento_milhoes = orcamento_disponivel * 1000  # Converte para milhões
+    
+    with col2:
+        inv_min_pct = st.slider(
+            "📉 Investimento Mínimo (% do orçamento atual)",
+            min_value=0,
+            max_value=20,
+            value=0,
+            step=1,
+            help="Garante um investimento mínimo proporcional ao orçamento atual do estado"
+        )
+    
+    with col3:
+        inv_max_pct = st.slider(
+            "📈 Investimento Máximo (% do orçamento atual)",
+            min_value=10,
+            max_value=100,
+            value=30,
+            step=5,
+            help="Limita investimento máximo para evitar concentração excessiva"
+        )
+    
+    st.markdown("---")
+    
+    # Botão de execução
+    if st.button("🚀 Calcular Alocação Ótima", type="primary", use_container_width=True):
+        
+        with st.spinner("Executando otimização via Simplex..."):
+            resultado = otimizar_alocacao(
+                df_dados=df,
+                orcamento_disponivel=orcamento_milhoes,
+                investimento_minimo_pct=inv_min_pct,
+                investimento_maximo_pct=inv_max_pct,
+                verbose=False
+            )
+        
+        # Armazena resultado no session state
+        st.session_state['resultado_otimizacao'] = resultado
+        st.session_state['orcamento_usado'] = orcamento_milhoes
+    
+    # Exibe resultados se existirem
+    if 'resultado_otimizacao' in st.session_state:
+        resultado = st.session_state['resultado_otimizacao']
+        
+        if resultado.status == 'Optimal':
+            st.success(f"✅ Solução ótima encontrada!")
+            
+            # Métricas de resultado
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric(
+                    "Orçamento Alocado",
+                    f"R$ {resultado.orcamento_usado/1000:.2f} bi"
+                )
+            
+            with col2:
+                st.metric(
+                    "Redução de Mortes",
+                    f"{resultado.reducao_crimes:,.0f}",
+                    delta=f"-{resultado.reducao_percentual:.2f}%"
+                )
+            
+            with col3:
+                # Custo por vida salva
+                custo_por_vida = resultado.orcamento_usado / resultado.reducao_crimes if resultado.reducao_crimes > 0 else 0
+                st.metric(
+                    "Custo por Vida Salva",
+                    f"R$ {custo_por_vida:.2f} mi"
+                )
+            
+            with col4:
+                estados_atendidos = (resultado.alocacao['investimento_milhoes'] > 0).sum()
+                st.metric(
+                    "Estados Atendidos",
+                    f"{estados_atendidos} / {len(resultado.alocacao)}"
+                )
+            
+            st.markdown("---")
+            
+            # Gráfico de alocação
+            st.subheader("📊 Distribuição da Alocação")
+            
+            df_alloc = resultado.alocacao.sort_values('investimento_milhoes', ascending=False)
+            df_alloc_positivo = df_alloc[df_alloc['investimento_milhoes'] > 0]
+            
+            if len(df_alloc_positivo) > 0:
+                col_bar, col_pie = st.columns([2, 1])
+                
+                with col_bar:
+                    fig_alloc = px.bar(
+                        df_alloc_positivo,
+                        x='sigla',
+                        y='investimento_milhoes',
+                        color='reducao_percentual',
+                        color_continuous_scale='Greens',
+                        text='investimento_milhoes',
+                        labels={
+                            'investimento_milhoes': 'Investimento (R$ milhões)',
+                            'sigla': 'Estado',
+                            'reducao_percentual': 'Redução (%)'
+                        },
+                        title="Investimento por Estado"
+                    )
+                    fig_alloc.update_traces(texttemplate='R$ %{text:.0f}M', textposition='outside')
+                    fig_alloc.update_layout(height=400)
+                    st.plotly_chart(fig_alloc, use_container_width=True)
+                
+                with col_pie:
+                    # Alocação por região
+                    df_regiao = resultado.alocacao.groupby('regiao')['investimento_milhoes'].sum().reset_index()
+                    df_regiao = df_regiao[df_regiao['investimento_milhoes'] > 0]
+                    
+                    fig_pie = px.pie(
+                        df_regiao,
+                        values='investimento_milhoes',
+                        names='regiao',
+                        title="Por Região"
+                    )
+                    fig_pie.update_layout(height=400)
+                    st.plotly_chart(fig_pie, use_container_width=True)
+            
+            # Tabela detalhada
+            st.subheader("📋 Detalhamento por Estado")
+            
+            st.dataframe(
+                resultado.alocacao[[
+                    'sigla', 'estado', 'regiao',
+                    'investimento_milhoes', 'mortes_antes', 
+                    'mortes_depois', 'reducao_mortes', 'reducao_percentual'
+                ]].sort_values('investimento_milhoes', ascending=False).style.format({
+                    'investimento_milhoes': 'R$ {:,.2f}',
+                    'mortes_antes': '{:,.0f}',
+                    'mortes_depois': '{:,.0f}',
+                    'reducao_mortes': '{:,.0f}',
+                    'reducao_percentual': '{:.2f}%'
+                }).background_gradient(subset=['investimento_milhoes'], cmap='Greens'),
+                use_container_width=True,
+                height=400
+            )
+        
+        else:
+            st.error(f"❌ Não foi possível encontrar solução ótima. Status: {resultado.status}")
+            st.info("""
+            Possíveis causas:
+            - Orçamento muito baixo para atender restrições mínimas
+            - Parâmetros inconsistentes (máximo < mínimo)
+            
+            Tente ajustar os parâmetros e executar novamente.
+            """)
+
+
+# =============================================================================
+# ABA 3: COMPARATIVO
+# =============================================================================
+def render_comparativo(df: pd.DataFrame):
+    """Renderiza a aba de Comparativo Antes vs. Depois."""
+    
+    st.header("📊 Comparativo - Antes vs. Depois")
+    
+    if 'resultado_otimizacao' not in st.session_state:
+        st.warning("⚠️ Execute a otimização primeiro na aba 'Otimização' para ver o comparativo.")
+        return
+    
+    resultado = st.session_state['resultado_otimizacao']
+    
+    if resultado.status != 'Optimal':
+        st.error("❌ A última otimização não encontrou solução ótima.")
+        return
+    
+    st.markdown(f"""
+    **Cenário analisado:** Orçamento suplementar de **R$ {resultado.orcamento_usado/1000:.2f} bilhões**
+    """)
+    
+    # Gráfico comparativo de barras
+    st.subheader("📈 Comparativo de Mortes por Estado (Antes × Depois)")
+    
+    df_comp = resultado.alocacao.copy()
+    df_comp = df_comp.sort_values('mortes_antes', ascending=True).tail(15)  # Top 15
+    
+    fig_comp = go.Figure()
+    
+    fig_comp.add_trace(go.Bar(
+        name='Antes',
+        y=df_comp['sigla'],
+        x=df_comp['mortes_antes'],
+        orientation='h',
+        marker_color='#ff6b6b',
+        text=df_comp['mortes_antes'],
+        textposition='auto'
+    ))
+    
+    fig_comp.add_trace(go.Bar(
+        name='Depois',
+        y=df_comp['sigla'],
+        x=df_comp['mortes_depois'],
+        orientation='h',
+        marker_color='#51cf66',
+        text=df_comp['mortes_depois'],
+        textposition='auto'
+    ))
+    
+    fig_comp.update_layout(
+        barmode='group',
+        height=600,
+        xaxis_title="Número de Mortes Violentas",
+        yaxis_title="Estado",
+        legend_title="Cenário",
+        title="Top 15 Estados com Maior Número de Mortes"
+    )
+    
+    st.plotly_chart(fig_comp, use_container_width=True)
+    
+    # Resumo por região
+    st.markdown("---")
+    st.subheader("🗺️ Impacto por Região")
+    
+    df_regiao = resultado.alocacao.groupby('regiao').agg({
+        'mortes_antes': 'sum',
+        'mortes_depois': 'sum',
+        'reducao_mortes': 'sum',
+        'investimento_milhoes': 'sum'
+    }).reset_index()
+    
+    df_regiao['reducao_pct'] = (df_regiao['reducao_mortes'] / df_regiao['mortes_antes'] * 100).round(2)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        fig_regiao = px.bar(
+            df_regiao,
+            x='regiao',
+            y=['mortes_antes', 'mortes_depois'],
+            barmode='group',
+            labels={'value': 'Mortes', 'regiao': 'Região', 'variable': 'Cenário'},
+            title="Mortes por Região: Antes vs Depois",
+            color_discrete_map={'mortes_antes': '#ff6b6b', 'mortes_depois': '#51cf66'}
+        )
+        fig_regiao.update_layout(height=400)
+        st.plotly_chart(fig_regiao, use_container_width=True)
+    
+    with col2:
+        fig_reducao = px.bar(
+            df_regiao,
+            x='regiao',
+            y='reducao_pct',
+            color='investimento_milhoes',
+            color_continuous_scale='Blues',
+            text='reducao_pct',
+            labels={
+                'reducao_pct': 'Redução (%)',
+                'regiao': 'Região',
+                'investimento_milhoes': 'Investimento (R$ mi)'
+            },
+            title="Redução Percentual por Região"
+        )
+        fig_reducao.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
+        fig_reducao.update_layout(height=400)
+        st.plotly_chart(fig_reducao, use_container_width=True)
+    
+    # Análise de eficiência
+    st.markdown("---")
+    st.subheader("💡 Análise de Eficiência")
+    
+    df_efic = resultado.alocacao[resultado.alocacao['investimento_milhoes'] > 0].copy()
+    df_efic['custo_por_vida'] = df_efic['investimento_milhoes'] / df_efic['reducao_mortes']
+    df_efic = df_efic.sort_values('custo_por_vida')
+    
+    col1, col2 = st.columns([1.5, 1])
+    
+    with col1:
+        fig_efic = px.scatter(
+            df_efic,
+            x='investimento_milhoes',
+            y='reducao_mortes',
+            size='elasticidade',
+            color='custo_por_vida',
+            hover_name='estado',
+            text='sigla',
+            color_continuous_scale='RdYlGn_r',
+            labels={
+                'investimento_milhoes': 'Investimento (R$ milhões)',
+                'reducao_mortes': 'Vidas Salvas',
+                'custo_por_vida': 'Custo/Vida (R$ mi)',
+                'elasticidade': 'Elasticidade'
+            },
+            title="Eficiência: Investimento vs Vidas Salvas"
+        )
+        fig_efic.update_traces(textposition='top center')
+        fig_efic.update_layout(height=450)
+        st.plotly_chart(fig_efic, use_container_width=True)
+    
+    with col2:
+        st.markdown("#### 🏆 Estados Mais Eficientes")
+        st.markdown("(Menor custo por vida salva)")
+        
+        top_efic = df_efic.nsmallest(5, 'custo_por_vida')[
+            ['estado', 'investimento_milhoes', 'reducao_mortes', 'custo_por_vida']
+        ]
+        top_efic.columns = ['Estado', 'Investimento (R$ mi)', 'Vidas Salvas', 'Custo/Vida']
+        
+        st.dataframe(
+            top_efic.style.format({
+                'Investimento (R$ mi)': 'R$ {:,.2f}',
+                'Vidas Salvas': '{:,.0f}',
+                'Custo/Vida': 'R$ {:,.2f}'
+            }),
+            use_container_width=True,
+            hide_index=True
+        )
+        
+        st.markdown("---")
+        
+        st.markdown("#### 📊 Resumo Geral")
+        
+        total_antes = resultado.alocacao['mortes_antes'].sum()
+        total_depois = resultado.alocacao['mortes_depois'].sum()
+        
+        st.markdown(f"""
+        | Métrica | Valor |
+        |---------|-------|
+        | **Mortes Antes** | {total_antes:,.0f} |
+        | **Mortes Depois** | {total_depois:,.0f} |
+        | **Vidas Salvas** | {resultado.reducao_crimes:,.0f} |
+        | **Redução** | {resultado.reducao_percentual:.2f}% |
+        | **Investimento Total** | R$ {resultado.orcamento_usado:,.2f} mi |
+        """)
+
+
+# =============================================================================
+# FUNÇÃO PRINCIPAL
+# =============================================================================
+def main():
+    """Função principal da aplicação."""
+    
+    # Título principal
+    st.markdown('<h1 class="main-header">🔐 Otimização de Recursos de Segurança Pública</h1>', 
+                unsafe_allow_html=True)
+    st.markdown("""
+    <p style="text-align: center; font-size: 1.2rem; color: #666;">
+    Aplicação de Pesquisa Operacional para alocação ótima de recursos entre estados brasileiros
+    </p>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Carrega dados
+    try:
+        df = carregar_dados()
+        geojson = carregar_geojson_brasil()
+    except Exception as e:
+        st.error(f"Erro ao carregar dados: {e}")
+        st.stop()
+    
+    # Renderiza sidebar
+    render_sidebar()
+    
+    # Abas principais
+    tab1, tab2, tab3 = st.tabs([
+        "📊 Dashboard",
+        "⚙️ Otimização",
+        "📈 Comparativo"
+    ])
+    
+    with tab1:
+        render_dashboard(df, geojson)
+    
+    with tab2:
+        render_otimizacao(df)
+    
+    with tab3:
+        render_comparativo(df)
+    
+    # Footer
+    st.markdown("---")
+    st.markdown("""
+    <div style="text-align: center; color: #888; font-size: 0.9rem;">
+        <p>Trabalho Acadêmico - Pesquisa Operacional</p>
+        <p>Dados: Atlas da Violência (IPEA) | Anuário Brasileiro de Segurança Pública (FBSP)</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+if __name__ == "__main__":
+    main()
