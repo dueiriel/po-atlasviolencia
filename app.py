@@ -315,7 +315,7 @@ def render_sidebar():
     **📖 Fontes dos Dados:**
     - [Atlas da Violência](https://www.ipea.gov.br/atlasviolencia/) (IPEA)
     - [Anuário de Segurança Pública](https://forumseguranca.org.br/) (FBSP)
-    - IBGE (População)
+    - [SICONFI](https://siconfi.tesouro.gov.br/) (Gastos)
     """)
     
     return ano_selecionado
@@ -637,20 +637,24 @@ def render_dashboard(df: pd.DataFrame, geojson, ano: int):
     # Tabela de dados
     st.markdown("---")
     with st.expander("📋 Ver Tabela de Dados Completa"):
+        df_tabela = df[[
+            'sigla', 'estado', 'regiao', 'populacao', 
+            'mortes_violentas', 'taxa_mortes_100k',
+            'orcamento_2022_milhoes', 'gasto_per_capita'
+        ]].copy()
+        df_tabela.columns = ['UF', 'Estado', 'Região', 'População', 'Mortes Violentas', 'Taxa/100k', 'Orçamento (R$ mi)', 'Gasto/Capita']
+        
         st.dataframe(
-            df[[
-                'sigla', 'estado', 'regiao', 'populacao', 
-                'mortes_violentas', 'taxa_mortes_100k',
-                'orcamento_2022_milhoes', 'gasto_per_capita'
-            ]].style.format({
-                'populacao': '{:,.0f}',
-                'mortes_violentas': '{:,.0f}',
-                'taxa_mortes_100k': '{:.1f}',
-                'orcamento_2022_milhoes': '{:,.1f}',
-                'gasto_per_capita': 'R$ {:,.0f}'
-            }).background_gradient(subset=['taxa_mortes_100k'], cmap='YlOrRd'),
+            df_tabela.style.format({
+                'População': '{:,.0f}',
+                'Mortes Violentas': '{:,.0f}',
+                'Taxa/100k': '{:.1f}',
+                'Orçamento (R$ mi)': 'R$ {:,.1f}',
+                'Gasto/Capita': 'R$ {:,.0f}'
+            }).background_gradient(subset=['Taxa/100k'], cmap='YlOrRd'),
             use_container_width=True,
-            height=400
+            height=400,
+            hide_index=True
         )
 
 
@@ -842,20 +846,24 @@ def render_otimizacao(df: pd.DataFrame, ano: int = 2022):
             # Tabela detalhada
             st.subheader("📋 Detalhamento por Estado")
             
+            df_detalhe = resultado.alocacao[[
+                'sigla', 'estado', 'regiao',
+                'investimento_milhoes', 'mortes_antes', 
+                'mortes_depois', 'reducao_mortes', 'reducao_percentual'
+            ]].sort_values('investimento_milhoes', ascending=False).copy()
+            df_detalhe.columns = ['UF', 'Estado', 'Região', 'Investimento (R$ mi)', 'Mortes Antes', 'Mortes Depois', 'Vidas Salvas', 'Redução %']
+            
             st.dataframe(
-                resultado.alocacao[[
-                    'sigla', 'estado', 'regiao',
-                    'investimento_milhoes', 'mortes_antes', 
-                    'mortes_depois', 'reducao_mortes', 'reducao_percentual'
-                ]].sort_values('investimento_milhoes', ascending=False).style.format({
-                    'investimento_milhoes': 'R$ {:,.2f}',
-                    'mortes_antes': '{:,.0f}',
-                    'mortes_depois': '{:,.0f}',
-                    'reducao_mortes': '{:,.0f}',
-                    'reducao_percentual': '{:.2f}%'
-                }).background_gradient(subset=['investimento_milhoes'], cmap='Greens'),
+                df_detalhe.style.format({
+                    'Investimento (R$ mi)': 'R$ {:,.2f}',
+                    'Mortes Antes': '{:,.0f}',
+                    'Mortes Depois': '{:,.0f}',
+                    'Vidas Salvas': '{:,.0f}',
+                    'Redução %': '{:.2f}%'
+                }).background_gradient(subset=['Investimento (R$ mi)'], cmap='Greens'),
                 use_container_width=True,
-                height=400
+                height=400,
+                hide_index=True
             )
         
         else:
@@ -2026,7 +2034,7 @@ def main():
         <p>
             Dados: <a href="https://www.ipea.gov.br/atlasviolencia/" target="_blank">Atlas da Violência (IPEA)</a> | 
             <a href="https://forumseguranca.org.br/anuario-brasileiro-seguranca-publica/" target="_blank">Anuário FBSP 2023</a> | 
-            <a href="https://www.ibge.gov.br/" target="_blank">IBGE</a>
+            <a href="https://siconfi.tesouro.gov.br/" target="_blank">SICONFI</a>
         </p>
         <p>
             Método: Programação Linear (Simplex) via <a href="https://github.com/coin-or/pulp" target="_blank">PuLP/CBC</a> | 
