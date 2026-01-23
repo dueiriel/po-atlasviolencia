@@ -1344,9 +1344,28 @@ def render_monte_carlo(df: pd.DataFrame, ano: int = 2022):
                 key="mc_variacao"
             )
     
-    # Calcula com os parâmetros atuais (usa cache interno)
-    resultado_mc = obter_monte_carlo_padrao(df)
-    n_sim_display = 250
+    # Botão para executar simulação
+    if st.button("🚀 Executar Simulação Monte Carlo", type="primary", use_container_width=True):
+        with st.spinner(f"Executando {n_simulacoes} simulações... Aguarde..."):
+            resultado_mc = executar_monte_carlo(
+                df,
+                orcamento=orcamento,
+                n_simulacoes=n_simulacoes,
+                incerteza_elasticidade=variacao/100,
+                incerteza_taxa=variacao/200,  # Metade da incerteza para taxa
+                verbose=False
+            )
+            st.session_state['resultado_mc'] = resultado_mc
+            st.session_state['mc_n_sim_display'] = n_simulacoes
+        st.success("✅ Simulação concluída!")
+    
+    # Usa resultado da sessão ou padrão
+    if 'resultado_mc' in st.session_state:
+        resultado_mc = st.session_state['resultado_mc']
+        n_sim_display = st.session_state.get('mc_n_sim_display', 250)
+    else:
+        resultado_mc = obter_monte_carlo_padrao(df)
+        n_sim_display = 250
     
     # Métricas resumo
     st.subheader("📊 Resultados da Simulação")
@@ -1380,10 +1399,12 @@ def render_monte_carlo(df: pd.DataFrame, ano: int = 2022):
         title=f"Distribuição de Vidas Salvas ({n_sim_display} simulações)",
         xaxis_title="Vidas Salvas",
         yaxis_title="Frequência",
-        showlegend=False
+        showlegend=False,
+        xaxis=dict(fixedrange=True),
+        yaxis=dict(fixedrange=True)
     )
     
-    st.plotly_chart(fig_hist, use_container_width=True)
+    st.plotly_chart(fig_hist, use_container_width=True, config={'displayModeBar': False, 'scrollZoom': False})
     
     # Percentis
     st.subheader("📋 Tabela de Percentis")

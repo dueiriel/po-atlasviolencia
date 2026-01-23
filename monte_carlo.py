@@ -108,10 +108,9 @@ def executar_monte_carlo(
     """
     Executa simulação Monte Carlo para análise de incerteza.
     
-    Para cada simulação:
-    1. Perturba parâmetros estocasticamente
-    2. Resolve o problema de otimização
-    3. Armazena resultado
+    VERSÃO OTIMIZADA: Usa aproximação analítica para velocidade.
+    Em vez de resolver PL completo para cada simulação, usa a solução
+    base e calcula variações baseadas nos parâmetros perturbados.
     
     Args:
         df_dados: DataFrame original
@@ -124,6 +123,105 @@ def executar_monte_carlo(
     
     Returns:
         ResultadoMonteCarlo com estatísticas
+    """
+    if seed is not None:
+        np.random.seed(seed)
+    
+    # Resolve otimização base UMA VEZ para obter alocação ótima
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        resultado_base = otimizar_alocacao(df_dados, orcamento, verbose=False)
+    
+    if resultado_base.status != 'Optimal':
+        # Fallback para método lento se não conseguir solução base
+        return _executar_monte_carlo_lento(
+            df_dados, orcamento, n_simulacoes, 
+            incerteza_elasticidade, incerteza_taxa, seed, verbose
+        )
+    
+    # Extrai dados para vetorização
+    df = df_dados.dropna(subset=['orcamento_2022_milhoes', 'elasticidade', 'mortes_violentas']).copy()
+    
+    mortes = df['mortes_violentas'].values
+    elasticidade = df['elasticidade'].values
+    orcamento_atual = df['orcamento_2022_milhoes'].values
+    
+    # Obtém alocação base (investimento por estado)
+    alocacao_base = resultado_base.alocacao.set_index('sigla')
+    investimentos = np.array([
+        alocacao_base.loc[s, 'investimento_milhoes'] if s in alocacao_base.index else 0 
+        for s in df['sigla']
+    ])
+    
+    # Simulação vetorizada - MUITO mais rápida
+    n_estados = len(mortes)
+    
+    # Gera todas as perturbações de uma vez (n_simulacoes x n_estados)
+    perturbacao_elast = np.random.normal(1.0, incerteza_elasticidade, (n_simulacoes, n_estados))
+    perturbacao_elast = np.clip(perturbacao_elast, 0.3, 2.0)  # Limita variação
+    
+    perturbacao_mortes = np.random.normal(1.0, incerteza_taxa, (n_simulacoes, n_estados))
+    perturbacao_mortes = np.clip(perturbacao_mortes, 0.7, 1.3)
+    
+    # Calcula redução para cada simulação (vetorizado)
+    # Redução = Σ mortes[i] * elasticidade[i] * investimento[i] / orcamento[i]
+    reducoes = np.zeros(n_simulacoes)
+    
+    for sim in range(n_simulacoes):
+        elast_sim = elasticidade * perturbacao_elast[sim]
+        mortes_sim = mortes * perturbacao_mortes[sim]
+        
+        # Calcula redução com parâmetros perturbados
+        reducao = np.sum(
+            mortes_sim * elast_sim * investimentos / orcamento_atual
+        )
+        reducoes[sim] = reducao
+    
+    # Calcula estatísticas
+    media = np.mean(reducoes)
+    std = np.std(reducoes)
+    
+    # Intervalo de confiança 95%
+    ic_inferior = np.percentile(reducoes, 2.5)
+    ic_superior = np.percentile(reducoes, 97.5)
+    
+    # Percentis
+    percentis = {
+        5: np.percentile(reducoes, 5),
+        25: np.percentile(reducoes, 25),
+        50: np.percentile(reducoes, 50),
+        75: np.percentile(reducoes, 75),
+        95: np.percentile(reducoes, 95)
+    }
+    
+    # Custo por vida
+    custos = orcamento / reducoes
+    custos = custos[~np.isnan(custos) & ~np.isinf(custos)]
+    
+    return ResultadoMonteCarlo(
+        n_simulacoes=n_simulacoes,
+        n_sucesso=n_simulacoes,
+        media_reducao=round(media, 1),
+        desvio_padrao_reducao=round(std, 1),
+        intervalo_confianca_95=(round(ic_inferior, 1), round(ic_superior, 1)),
+        percentis={k: round(v, 1) for k, v in percentis.items()},
+        distribuicao_reducao=reducoes.tolist(),
+        distribuicao_custo=custos.tolist()
+    )
+
+
+def _executar_monte_carlo_lento(
+    df_dados: pd.DataFrame,
+    orcamento: float,
+    n_simulacoes: int = 1000,
+    incerteza_elasticidade: float = 0.20,
+    incerteza_taxa: float = 0.10,
+    seed: Optional[int] = 42,
+    verbose: bool = True
+) -> ResultadoMonteCarlo:
+    """
+    Versão original (lenta) do Monte Carlo - resolve PL completo para cada simulação.
+    Usado como fallback se a versão otimizada falhar.
     """
     if seed is not None:
         np.random.seed(seed)
