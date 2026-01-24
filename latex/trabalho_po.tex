@@ -283,9 +283,8 @@ Os dados utilizados neste trabalho provêm de fontes oficiais brasileiras, confo
 \textbf{Fonte} & \textbf{Dados} & \textbf{Período} & \textbf{Acesso} \\
 \midrule
 Atlas da Violência & Taxa de homicídios por UF & 1989-2022 & ipea.gov.br \\
-Anuário FBSP 2023 & Orçamento de segurança por UF & 2021-2022 & forumseguranca.org.br \\
-IBGE & População por UF & 2022 & ibge.gov.br \\
-SICONFI & Execução orçamentária & 2022 & siconfi.tesouro.gov.br \\
+Anuário FBSP 2023 & Mortes violentas por UF & 2021-2022 & forumseguranca.org.br \\
+SICONFI & Gastos com Segurança Pública & 2013-2023 & siconfi.tesouro.gov.br \\
 \bottomrule
 \end{tabularx}
 \footnotesize{Fonte: Elaboração própria (2026).}
@@ -465,13 +464,20 @@ Nota-se que não há correlação linear simples entre gasto e resultado. Estado
 
 \subsection{Análise de Eficiência}
 
-Definimos o índice de eficiência como a razão entre o resultado relativo (quanto menor a taxa, melhor) e o custo relativo (quanto maior o gasto, pior):
+Para medir a eficiência relativa de cada estado, utilizamos uma abordagem inspirada em DEA (Data Envelopment Analysis) com pesos fixos, priorizando o resultado (baixa taxa de homicídios) sobre a economia (baixo gasto):
 
 \begin{equation}
-\text{Eficiência}_i = \frac{\text{Taxa média} / \text{Taxa}_i}{\text{Gasto}_i / \text{Gasto médio}}
+\text{Eficiência}_i = 0{,}75 \cdot \frac{\text{Taxa}_{\min}}{\text{Taxa}_i} + 0{,}25 \cdot \frac{\text{Gasto}_{\min}}{\text{Gasto}_i}
 \end{equation}
 
-Valores acima de 1 indicam que o estado consegue resultados melhores que a média com custos menores que a média. A média nacional de gasto per capita é R\$ 633 e a taxa média de mortes é 81,7 por 100 mil habitantes.
+Onde:
+\begin{itemize}
+    \setlength{\itemsep}{0pt}
+    \item \textbf{75\%} do peso é dado ao \textbf{resultado} (quanto menor a taxa de homicídios, melhor)
+    \item \textbf{25\%} do peso é dado à \textbf{economia} (quanto menor o gasto per capita, melhor)
+\end{itemize}
+
+Esta ponderação garante que estados com baixa violência sejam priorizados no ranking, mesmo que gastem mais que outros. A eficiência é normalizada para que o estado mais eficiente tenha 100\%.
 
 \begin{figure}[H]
     \centering
@@ -591,11 +597,11 @@ Esses valores indicam que o modelo tem capacidade preditiva razoável, embora de
 
 Os resultados deste trabalho permitem as seguintes conclusões:
 
-Primeiro, a eficiência no uso de recursos de segurança varia significativamente entre os estados brasileiros. Estados como São Paulo (índice 2,82) são quase sete vezes mais eficientes que Tocantins (índice 0,43) no uso de recursos de segurança. São Paulo gasta apenas R\$ 334/capita e tem a menor taxa (54,8/100k), enquanto Tocantins gasta R\$ 1.200/capita e tem taxa de 100,3/100k.
+Primeiro, a eficiência no uso de recursos de segurança varia significativamente entre os estados brasileiros. Utilizando a fórmula de eficiência com pesos (75\% resultado + 25\% economia), estados como São Paulo e Santa Catarina lideram o ranking, conseguindo baixas taxas de violência com gastos moderados.
 
-Segundo, a otimização gera impacto significativo. Uma distribuição otimizada de R\$ 5 bilhões poderia salvar aproximadamente 1.875 vidas por ano.
+Segundo, a otimização gera impacto significativo. Uma distribuição otimizada de R\$ 5 bilhões poderia salvar aproximadamente 1.875 vidas por ano, com intervalo de confiança de 95\% entre 1.604 e 2.452 vidas (validado por simulação Monte Carlo).
 
-Terceiro, gasto não garante resultado. Estados do Norte (TO, AP, RO, RR, AC) gastam muito mais que a média nacional (R\$ 633/capita), mas mantêm taxas de violência acima de 60/100k. A qualidade da gestão é determinante.
+Terceiro, gasto não garante resultado. Estados do Norte gastam muito acima da média nacional, mas mantêm taxas de violência elevadas. A qualidade da gestão é determinante.
 
 Quarto, a priorização importa. Estados com alta elasticidade e alto volume de mortes (BA, PE, CE) devem ser priorizados para maximizar o impacto.
 
@@ -619,9 +625,9 @@ Este trabalho apresenta as seguintes limitações:
 \begin{itemize}
     \setlength{\itemsep}{0pt}
     \item A elasticidade é uma simplificação; a relação real entre gasto e crime é multifatorial;
-    \item Dados de orçamento disponíveis apenas para 2021-2022;
-    \item O modelo assume linearidade, que pode não valer para investimentos muito grandes;
-    \item Tocantins estimado pela média regional.
+    \item Os dados de gastos do SICONFI (2013-2023) podem ter inconsistências entre estados devido a diferentes metodologias contábeis;
+    \item O modelo assume linearidade, que pode não valer para investimentos muito grandes (retornos decrescentes);
+    \item Fatores externos (legislação, economia, demografia) não são capturados pelo modelo.
 \end{itemize}
 
 \subsection{Trabalhos Futuros}
