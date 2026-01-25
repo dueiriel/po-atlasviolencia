@@ -72,31 +72,13 @@ xᵢ ≥ 0          ∀i          (não-negatividade)
 
 ## Conclusões Principais
 
-### Estados Mais Eficientes (menor taxa relativa ao gasto)
+### Análise de Eficiência (DEA 75/25)
 
-Com base na análise do índice `(taxa média / taxa estado) / (gasto estado / gasto médio)`, os estados com **maior eficiência** no uso de recursos são:
+Utilizamos análise DEA (Data Envelopment Analysis) com pesos fixos:
+- **75%** - Resultado (quanto menor a taxa de homicídios, melhor)
+- **25%** - Economia (quanto menor o gasto per capita, melhor)
 
-| Ranking | Estado | Gasto/Capita | Taxa/100k | Índice de Eficiência |
-|---------|--------|--------------|-----------|----------------------|
-| 1º | São Paulo | R$ 334 | 54.8 | 2.82 |
-| 2º | Distrito Federal | R$ 407 | 53.5 | 2.37 |
-| 3º | Maranhão | R$ 304 | 71.6 | 2.37 |
-| 4º | Piauí | R$ 306 | 80.8 | 2.09 |
-| 5º | Santa Catarina | R$ 443 | 62.6 | 1.87 |
-
-**Interpretação:** Estes estados conseguem taxas de violência abaixo da média com gastos abaixo da média nacional (R$ 633/capita).
-
-### Estados Menos Eficientes (alto gasto, alta violência)
-
-| Ranking | Estado | Gasto/Capita | Taxa/100k | Índice de Eficiência |
-|---------|--------|--------------|-----------|----------------------|
-| 27º | Tocantins | R$ 1.200 | 100.3 | 0.43 |
-| 26º | Amapá | R$ 1.236 | 94.2 | 0.44 |
-| 25º | Rondônia | R$ 1.013 | 101.1 | 0.50 |
-| 24º | Roraima | R$ 996 | 96.0 | 0.54 |
-| 23º | Mato Grosso | R$ 996 | 93.5 | 0.56 |
-
-**Interpretação:** Estes estados gastam muito acima da média nacional mas mantêm taxas de violência altas, indicando ineficiência na aplicação dos recursos.
+Esta ponderação prioriza estados que conseguem **baixa violência**, mesmo que gastem mais.
 
 ### Impacto da Otimização
 
@@ -204,11 +186,10 @@ Acesse `http://localhost:8501` no navegador.
 ├── latex/                    # Documento LaTeX do trabalho
 │   └── trabalho_po.tex
 └── dados/
-    ├── taxa_homicidios_jovens.csv    # IPEA: série 1989-2022
-    ├── mortes_populacao_2022.csv     # IPEA: MVI e população 2022
-    ├── mortes_violentas_2022.csv     # FBSP: mortes por UF 2022
-    └── dados.novos/                  # SICONFI: gastos 2013-2023
+    └── dados.novos/              # Dados do SICONFI (2013-2023)
+        ├── Dados Homicidios 2013-2023.xlsx
         ├── gastos_2013_filtrado.csv
+        ├── gastos_2014_filtrado.csv
         ├── ...
         └── gastos_2023_filtrado.csv
 ```
@@ -219,13 +200,11 @@ Acesse `http://localhost:8501` no navegador.
 
 1. **Elasticidade é uma simplificação:** A relação real entre gasto e crime depende de como o dinheiro é aplicado (tecnologia, efetivo, inteligência).
 
-2. **Dados de orçamento limitados:** Só temos 2021-2022 no Anuário FBSP. Séries mais longas permitiriam elasticidades mais precisas.
+2. **Dados do SICONFI:** Podem haver inconsistências entre estados devido a diferentes metodologias contábeis.
 
-3. **Tocantins:** Não encontrado na tabela do FBSP. Usamos a média da região Norte como proxy.
+3. **Linearidade:** O modelo assume que dobrar o investimento dobra o efeito, o que provavelmente não vale para investimentos muito grandes (retornos decrescentes).
 
-4. **Linearidade:** O modelo assume que dobrar o investimento dobra o efeito, o que provavelmente não vale para investimentos muito grandes (retornos decrescentes).
-
-5. **Fatores externos:** O modelo não captura mudanças estruturais (legislação, demografia, economia).
+4. **Fatores externos:** O modelo não captura mudanças estruturais (legislação, demografia, economia).
 
 ---
 

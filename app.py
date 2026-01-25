@@ -1724,8 +1724,13 @@ def render_multi_periodo(df: pd.DataFrame, ano: int = 2022):
             text='Crimes Evitados'
         )
         fig_bar.update_traces(texttemplate='%{text:,.0f}', textposition='outside')
-        fig_bar.update_layout(showlegend=False)
-        st.plotly_chart(fig_bar, use_container_width=True)
+        fig_bar.update_layout(
+            showlegend=False,
+            dragmode=False,
+            xaxis=dict(fixedrange=True),
+            yaxis=dict(fixedrange=True)
+        )
+        st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False, 'scrollZoom': False})
         
         # Gráfico de distribuição temporal
         st.subheader("💰 Distribuição Temporal do Investimento")
@@ -1746,9 +1751,12 @@ def render_multi_periodo(df: pd.DataFrame, ano: int = 2022):
             title="Investimento por Período",
             xaxis_title="Período (ano)",
             yaxis_title="Investimento (R$ bilhões)",
-            legend_title="Estratégia"
+            legend_title="Estratégia",
+            dragmode=False,
+            xaxis=dict(fixedrange=True),
+            yaxis=dict(fixedrange=True)
         )
-        st.plotly_chart(fig_dist, use_container_width=True)
+        st.plotly_chart(fig_dist, use_container_width=True, config={'displayModeBar': False, 'scrollZoom': False})
         
         # Explicação
         st.markdown("---")
@@ -2072,7 +2080,7 @@ def main():
         <p><strong>Trabalho Acadêmico - Pesquisa Operacional</strong></p>
         <p>
             Dados: <a href="https://www.ipea.gov.br/atlasviolencia/" target="_blank">Atlas da Violência (IPEA)</a> | 
-            <a href="https://forumseguranca.org.br/anuario-brasileiro-seguranca-publica/" target="_blank">Anuário FBSP 2023</a> | 
+            <a href="https://forumseguranca.org.br/anuario-brasileiro-seguranca-publica/" target="_blank">Anuário FBSP</a> | 
             <a href="https://siconfi.tesouro.gov.br/" target="_blank">SICONFI</a>
         </p>
         <p>

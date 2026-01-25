@@ -6,90 +6,72 @@ Este documento descreve em detalhes todas as fontes de dados utilizadas neste pr
 
 ## 1. Dados de Violência
 
-### 1.1 Atlas da Violência (IPEA/FBSP)
+### 1.1 Homicídios por UF (2013-2023)
 
-**O que é:** O Atlas da Violência é uma publicação anual produzida pelo Instituto de Pesquisa Econômica Aplicada (IPEA) em parceria com o Fórum Brasileiro de Segurança Pública (FBSP). Consolida estatísticas de mortes violentas no Brasil desde 1989.
+**O que é:** Dados de homicídios consolidados por Unidade da Federação, extraídos de fontes oficiais brasileiras.
 
 **Dados utilizados:**
-- Taxa de homicídios de jovens (15-29 anos) por UF: 1989-2022
-- Número absoluto de mortes violentas intencionais por UF: 2022
+- Número absoluto de homicídios por UF: 2013-2023
 
-**Fonte primária:**
-- Portal: https://www.ipea.gov.br/atlasviolencia/
-- Download de dados: https://www.ipea.gov.br/atlasviolencia/dados-series/40
-- Metodologia: https://www.ipea.gov.br/atlasviolencia/arquivos/artigos/5765-atlasdaviolencia2021completo.pdf
+**Fonte primária:** Sistema de Informação sobre Mortalidade (SIM) do Ministério da Saúde, via DATASUS.
 
-**Arquivo no projeto:** `dados/taxa_homicidios_jovens.csv`
+**Arquivo no projeto:** `dados/dados.novos/Dados Homicidios 2013-2023.xlsx`
 
-**Origem dos dados brutos:** Sistema de Informação sobre Mortalidade (SIM) do Ministério da Saúde, via DATASUS.
+**Observação:** Os dados incluem homicídios dolosos (classificação CID-10: X85-Y09, Y35-Y36).
 
 ---
 
-### 1.2 Mortes Violentas Intencionais (MVI)
+## 2. Dados de Orçamento/Gastos em Segurança Pública
 
-**Definição oficial (FBSP):** Soma de:
-- Homicídios dolosos
-- Latrocínios (roubo seguido de morte)
-- Lesões corporais seguidas de morte
-- Mortes decorrentes de intervenção policial
+### 2.1 SICONFI - Sistema de Informações Contábeis e Fiscais (2013-2023)
 
-**Dados utilizados:** Número de MVI por UF em 2022
-
-**Fonte:**
-- Anuário Brasileiro de Segurança Pública 2023, Tabela 1
-- Download: https://forumseguranca.org.br/wp-content/uploads/2023/07/anuario-2023.pdf
-- Dados em Excel: https://forumseguranca.org.br/estatisticas/
-
-**Arquivo no projeto:** `dados/mortes_populacao_2022.csv`
-
----
-
-## 2. Dados de Orçamento/Investimento em Segurança Pública
-
-### 2.1 Anuário Brasileiro de Segurança Pública 2023 (FBSP)
-
-**O que é:** Publicação anual do Fórum Brasileiro de Segurança Pública com estatísticas criminais e dados de gestão de segurança pública no Brasil.
+**O que é:** Sistema da Secretaria do Tesouro Nacional que centraliza dados contábeis e fiscais de todos os entes da federação.
 
 **Dados utilizados:**
-- Tabela 54: "Despesas realizadas com a Função Segurança Pública"
-- Colunas: Total de despesas por UF em 2021 e 2022 (R$ correntes)
-
-**Fonte:**
-- Publicação: https://forumseguranca.org.br/anuario-brasileiro-seguranca-publica/
-- Download direto (PDF): https://forumseguranca.org.br/wp-content/uploads/2023/07/anuario-2023.pdf
-- Tabelas em Excel: https://forumseguranca.org.br/estatisticas/
-
-**Arquivo no projeto:** `dados/anuario_fbsp_2023.xlsx`
-
-**Origem dos dados brutos:** 
-- SICONFI (Sistema de Informações Contábeis e Fiscais do Setor Público Brasileiro)
-- Secretaria do Tesouro Nacional
-- Portal: https://siconfi.tesouro.gov.br/
-
-**Metodologia:**
-- Os valores representam a execução orçamentária na Função 06 (Segurança Pública)
-- Incluem: polícias civil e militar, bombeiros, administração de segurança
+- Despesas Liquidadas com a Função 06 (Segurança Pública) por UF
+- Período: 2013 a 2023 (11 anos de dados)
 - Valores em R$ correntes do respectivo ano
 
-**Limitações:**
-- Tocantins: dados não disponíveis na tabela original (usamos média da região Norte)
-- Valores não incluem gastos federais diretos (Polícia Federal, PRF)
-- Não refletem efetividade, apenas volume financeiro
+**Fonte:**
+- Portal SICONFI: https://siconfi.tesouro.gov.br/
+- Relatórios: Demonstrativo de Despesas por Função/Subfunção
+
+**Arquivos no projeto:** 
+```
+dados/dados.novos/
+├── gastos_2013_filtrado.csv
+├── gastos_2014_filtrado.csv
+├── gastos_2015_filtrado.csv
+├── gastos_2016_filtrado.csv
+├── gastos_2017_filtrado.csv
+├── gastos_2018_filtrado.csv
+├── gastos_2019_filtrado.csv
+├── gastos_2020_filtrado.csv
+├── gastos_2021_filtrado.csv
+├── gastos_2022_filtrado.csv
+└── gastos_2023_filtrado.csv
+```
+
+**O que está incluído na Função 06 - Segurança Pública:**
+- Policiamento
+- Defesa Civil
+- Informação e Inteligência
+- Administração de Segurança Pública
+
+**O que NÃO está incluído:**
+- Gastos federais diretos (Polícia Federal, Polícia Rodoviária Federal)
+- Gastos municipais (Guardas Municipais)
+- Sistema prisional (Função 14 - Direitos da Cidadania)
 
 ---
 
 ## 3. Dados Demográficos
 
-### 3.1 População por UF (IBGE)
+### 3.1 População por UF
 
-**Fonte:**
-- Projeção populacional IBGE 2022
-- Portal: https://www.ibge.gov.br/estatisticas/sociais/populacao.html
-- Download: https://sidra.ibge.gov.br/tabela/6579
+**Fonte:** Os dados de população estão incluídos nos arquivos de gastos do SICONFI.
 
-**Dados utilizados:** População estimada por UF em 2022
-
-**Arquivo no projeto:** Coluna "Populacao" em `dados/mortes_populacao_2022.csv`
+**Dados utilizados:** População estimada por UF em cada ano (2013-2023)
 
 ---
 
@@ -109,31 +91,35 @@ Este documento descreve em detalhes todas as fontes de dados utilizadas neste pr
 ### 5.1 Cálculo da Taxa de Mortes por 100 mil habitantes
 
 ```
-taxa_mortes_100k = (mortes_violentas / populacao) × 100.000
+taxa_mortes_100k = (homicidios / populacao) × 100.000
 ```
 
 ### 5.2 Cálculo do Gasto Per Capita
 
 ```
-gasto_per_capita = orcamento_2022 / populacao
+gasto_per_capita = gasto_seguranca / populacao
 ```
 
-### 5.3 Cálculo da Elasticidade (por Regressão)
+### 5.3 Cálculo da Elasticidade
 
-Para cada estado, calculamos a elasticidade crime-investimento usando regressão linear sobre a série histórica 1989-2022:
+A elasticidade crime-investimento mede a sensibilidade da taxa de homicídios a variações no gasto com segurança. É calculada usando regressão linear sobre a série histórica:
 
 ```python
-# Variação percentual do crime
-Δ_crime = (taxa_ano_atual - taxa_ano_anterior) / taxa_ano_anterior
-
-# Variação percentual do investimento (proxy: PIB estadual)
-Δ_investimento = variação proxy de investimento
-
-# Elasticidade = coeficiente angular da regressão
-elasticidade = β₁ da regressão Δ_crime ~ Δ_investimento
+# Para cada estado, usando dados de 2013-2023
+elasticidade = coeficiente da regressão Δ_taxa_homicidios ~ Δ_gasto
 ```
 
-**Limitação importante:** Como não temos série histórica de orçamento de segurança por estado (apenas 2021-2022), usamos a variação da taxa de homicídios ao longo do tempo como proxy da "eficiência histórica" de cada estado.
+### 5.4 Cálculo da Eficiência (DEA)
+
+Utilizamos modelo inspirado em DEA (Data Envelopment Analysis) com pesos fixos:
+
+```
+Eficiência = 0,75 × (Taxa_min / Taxa_estado) + 0,25 × (Gasto_min / Gasto_estado)
+```
+
+Onde:
+- **75%** do peso é dado ao **resultado** (quanto menor a taxa de homicídios, melhor)
+- **25%** do peso é dado à **economia** (quanto menor o gasto per capita, melhor)
 
 ---
 
@@ -148,20 +134,6 @@ elasticidade = β₁ da regressão Δ_crime ~ Δ_investimento
 
 ### Economia do Crime
 - Becker, G. S. (1968). "Crime and Punishment: An Economic Approach". *Journal of Political Economy*, 76(2), 169-217.
-- Cerqueira, D.; Lobão, W. (2004). "Determinantes da criminalidade: arcabouços teóricos e resultados empíricos". *Dados*, 47(2), 233-269.
 
-### Análise de Eficiência em Segurança Pública
-- Pereira Filho, O. A. (2016). "Eficiência técnica das polícias civis brasileiras". *Revista Brasileira de Segurança Pública*, 10(2).
-
----
-
-## 7. Contato para Dados
-
-- **IPEA/Atlas da Violência:** atlasviolencia@ipea.gov.br
-- **FBSP/Anuário:** contato@forumseguranca.org.br
-- **IBGE:** ibge@ibge.gov.br
-- **SICONFI:** siconfi@tesouro.gov.br
-
----
-
-*Documento atualizado em: Janeiro/2026*
+### DEA (Data Envelopment Analysis)
+- Charnes, A.; Cooper, W. W.; Rhodes, E. (1978). "Measuring the efficiency of decision making units". *European Journal of Operational Research*, 2(6), 429-444.
