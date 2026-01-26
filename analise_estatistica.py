@@ -268,19 +268,21 @@ def atualizar_elasticidade_dados(df_dados: pd.DataFrame) -> pd.DataFrame:
     # Gera relatório de elasticidade
     df_elast = gerar_relatorio_elasticidade()
     
-    # Cria mapeamento estado -> elasticidade
+    # Cria mapeamento sigla -> elasticidade (df_elast usa siglas em 'estado')
     mapa_elasticidade = dict(zip(
         df_elast['estado'], 
         df_elast['elasticidade_calculada']
     ))
     
-    # Atualiza elasticidade no DataFrame
+    # Atualiza elasticidade no DataFrame usando sigla
     df_dados = df_dados.copy()
     df_dados['elasticidade_estimada'] = df_dados['elasticidade']  # Guarda original
-    df_dados['elasticidade'] = df_dados['estado'].map(mapa_elasticidade)
+    df_dados['elasticidade'] = df_dados['sigla'].map(mapa_elasticidade)
     
-    # Preenche NaN com média
-    media_elast = df_dados['elasticidade'].mean()
+    # Preenche NaN com média (se algum estado não foi encontrado)
+    media_elast = df_dados['elasticidade'].dropna().mean()
+    if pd.isna(media_elast):
+        media_elast = 0.10  # Fallback
     df_dados['elasticidade'] = df_dados['elasticidade'].fillna(media_elast)
     
     return df_dados

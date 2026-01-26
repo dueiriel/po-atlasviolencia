@@ -185,6 +185,14 @@ def carregar_dados_consolidados() -> pd.DataFrame:
         how='left'
     )
     
+    # Trata valores faltantes de orçamento (ex: Tocantins não está no Anuário)
+    # Usa a média dos estados da mesma região como estimativa
+    for idx, row in df[df['orcamento_2022'].isna()].iterrows():
+        regiao = row['regiao']
+        media_regiao = df[df['regiao'] == regiao]['orcamento_2022'].mean()
+        df.loc[idx, 'orcamento_2022'] = media_regiao
+        df.loc[idx, 'orcamento_2022_milhoes'] = media_regiao / 1_000_000
+    
     # Calcula gasto per capita (R$ por habitante)
     df['gasto_per_capita'] = (df['orcamento_2022'] / df['populacao']).round(2)
     

@@ -23,3 +23,4 @@ geojson>=3.0.0
 
 # Requisições HTTP para baixar dados geográficos
 requests>=2.31.0
+matplotlib
