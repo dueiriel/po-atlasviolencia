@@ -1560,6 +1560,323 @@ def render_multi_periodo(df: pd.DataFrame):
 
 
 # =============================================================================
+# ABA 8: CONCLUSÕES E EFICIÊNCIA DOS INVESTIMENTOS
+# =============================================================================
+def render_conclusoes(df: pd.DataFrame):
+    """
+    Renderiza a aba de Conclusões com análise de eficiência de investimentos por estado.
+    """
+    st.header("📋 Conclusões - Eficiência dos Investimentos")
+    
+    with st.expander("ℹ️ **Sobre esta aba** - Clique para expandir", expanded=False):
+        st.markdown("""
+        ### O que é a Análise de Eficiência?
+        
+        Esta aba apresenta as **conclusões finais** do estudo, focando em responder a pergunta central:
+        **Quais estados estão investindo de forma mais eficiente em segurança pública?**
+        
+        #### Métricas de eficiência calculadas:
+        
+        | Métrica | Fórmula | Interpretação |
+        |---------|---------|---------------|
+        | **Gasto per capita** | Orçamento ÷ População | Quanto cada estado investe por habitante |
+        | **Custo por morte evitada** | Orçamento ÷ Mortes evitáveis | Quanto custa reduzir 1 morte |
+        | **Elasticidade** | % redução crime ÷ % aumento invest. | Sensibilidade do crime ao investimento |
+        | **Eficiência relativa** | Comparação com média nacional | Desempenho vs. outros estados |
+        
+        #### Fontes de dados:
+        - **Violência**: Atlas da Violência (IPEA/FBSP) - série 1989-2022
+        - **Orçamentos**: Anuário Brasileiro de Segurança Pública 2023 (FBSP)
+        - **População**: IBGE - Censo/Estimativas 2022
+        """)
+    
+    # Obtém resultado da otimização
+    resultado = obter_otimizacao_padrao(df)
+    
+    st.markdown("""
+    ### 🎯 Pergunta Central do Estudo
+    
+    > **Quais estados brasileiros estão utilizando seus recursos de segurança pública de forma 
+    > mais eficiente, e como uma redistribuição otimizada poderia reduzir a violência?**
+    """)
+    
+    st.markdown("---")
+    
+    # =========================================================================
+    # SEÇÃO 1: RANKING DE EFICIÊNCIA ATUAL
+    # =========================================================================
+    st.subheader("🏆 Ranking de Eficiência Atual (2022)")
+    
+    st.markdown("""
+    Comparamos o **gasto per capita** com a **taxa de violência** para identificar 
+    estados que conseguem melhores resultados com menos recursos.
+    """)
+    
+    # Calcula índice de eficiência
+    df_efic = df.copy()
+    df_efic['indice_eficiencia'] = (
+        (df_efic['gasto_per_capita'] / df_efic['gasto_per_capita'].mean()) / 
+        (df_efic['taxa_mortes_100k'] / df_efic['taxa_mortes_100k'].mean())
+    ).round(2)
+    
+    # Categoriza eficiência
+    def categorizar_eficiencia(row):
+        if row['indice_eficiencia'] > 1.5:
+            return '🟢 Alta eficiência'
+        elif row['indice_eficiencia'] > 0.8:
+            return '🟡 Média eficiência'
+        else:
+            return '🔴 Baixa eficiência'
+    
+    df_efic['categoria'] = df_efic.apply(categorizar_eficiencia, axis=1)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### Estados MAIS Eficientes")
+        st.markdown("*Alto gasto per capita, baixa taxa de violência*")
+        
+        top_eficientes = df_efic.nlargest(10, 'indice_eficiencia')[
+            ['estado', 'sigla', 'gasto_per_capita', 'taxa_mortes_100k', 'indice_eficiencia', 'categoria']
+        ]
+        top_eficientes.columns = ['Estado', 'UF', 'Gasto/capita', 'Taxa/100k', 'Índice', 'Categoria']
+        
+        st.dataframe(
+            top_eficientes.style.format({
+                'Gasto/capita': 'R$ {:,.0f}',
+                'Taxa/100k': '{:.1f}',
+                'Índice': '{:.2f}'
+            }),
+            use_container_width=True,
+            hide_index=True
+        )
+    
+    with col2:
+        st.markdown("#### Estados MENOS Eficientes")
+        st.markdown("*Gasto não proporcional aos resultados*")
+        
+        bottom_eficientes = df_efic.nsmallest(10, 'indice_eficiencia')[
+            ['estado', 'sigla', 'gasto_per_capita', 'taxa_mortes_100k', 'indice_eficiencia', 'categoria']
+        ]
+        bottom_eficientes.columns = ['Estado', 'UF', 'Gasto/capita', 'Taxa/100k', 'Índice', 'Categoria']
+        
+        st.dataframe(
+            bottom_eficientes.style.format({
+                'Gasto/capita': 'R$ {:,.0f}',
+                'Taxa/100k': '{:.1f}',
+                'Índice': '{:.2f}'
+            }),
+            use_container_width=True,
+            hide_index=True
+        )
+    
+    # Gráfico de eficiência
+    fig_efic = px.scatter(
+        df_efic,
+        x='gasto_per_capita',
+        y='taxa_mortes_100k',
+        size='populacao',
+        color='indice_eficiencia',
+        color_continuous_scale='RdYlGn',
+        hover_name='estado',
+        text='sigla',
+        labels={
+            'gasto_per_capita': 'Gasto Per Capita (R$)',
+            'taxa_mortes_100k': 'Taxa de Mortes/100k hab.',
+            'indice_eficiencia': 'Índice de Eficiência'
+        },
+        title="Mapa de Eficiência: Gasto vs. Resultado"
+    )
+    fig_efic.update_traces(textposition='top center')
+    fig_efic.update_layout(height=500)
+    
+    # Adiciona linha de tendência ideal (quanto mais se gasta, menor deveria ser a taxa)
+    st.plotly_chart(fig_efic, use_container_width=True)
+    
+    st.info("""
+    💡 **Interpretação:** Estados no canto **inferior direito** (alto gasto, baixa violência) 
+    são os mais eficientes. Estados no canto **superior esquerdo** (baixo gasto, alta violência) 
+    precisam de mais recursos e/ou melhor gestão.
+    """)
+    
+    st.markdown("---")
+    
+    # =========================================================================
+    # SEÇÃO 2: ANÁLISE DE ELASTICIDADE
+    # =========================================================================
+    st.subheader("📈 Elasticidade Crime-Investimento por Estado")
+    
+    st.markdown("""
+    A **elasticidade** mede quanto o crime responde a variações no investimento.
+    Estados com **maior elasticidade** são os que mais se beneficiam de investimentos adicionais.
+    """)
+    
+    # Usa elasticidade já calculada
+    df_elast = df[['sigla', 'estado', 'regiao', 'elasticidade']].copy()
+    df_elast = df_elast.sort_values('elasticidade', ascending=False)
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        fig_elast = px.bar(
+            df_elast,
+            x='sigla',
+            y='elasticidade',
+            color='regiao',
+            labels={'elasticidade': 'Elasticidade', 'sigla': 'Estado'},
+            title="Elasticidade por Estado (ordenado)"
+        )
+        fig_elast.update_layout(height=400)
+        st.plotly_chart(fig_elast, use_container_width=True)
+    
+    with col2:
+        st.markdown("#### Interpretação da Elasticidade")
+        st.markdown("""
+        | Valor | Significado |
+        |-------|-------------|
+        | **> 0.5** | Alta sensibilidade - investimento tem grande impacto |
+        | **0.2 - 0.5** | Sensibilidade moderada |
+        | **< 0.2** | Baixa sensibilidade - outros fatores dominam |
+        
+        **Estados com alta elasticidade** devem ser priorizados 
+        em uma estratégia de otimização.
+        """)
+    
+    st.markdown("---")
+    
+    # =========================================================================
+    # SEÇÃO 3: PRINCIPAIS CONCLUSÕES
+    # =========================================================================
+    st.subheader("📝 Principais Conclusões do Estudo")
+    
+    # Calcula estatísticas para conclusões
+    total_mortes = df['mortes_violentas'].sum()
+    total_orcamento = df['orcamento_2022_milhoes'].sum()
+    media_taxa = df['taxa_mortes_100k'].mean()
+    
+    # Estados extremos
+    estado_mais_violento = df.loc[df['taxa_mortes_100k'].idxmax()]
+    estado_menos_violento = df.loc[df['taxa_mortes_100k'].idxmin()]
+    estado_maior_gasto = df.loc[df['gasto_per_capita'].idxmax()]
+    estado_menor_gasto = df.loc[df['gasto_per_capita'].idxmin()]
+    
+    # Resultados da otimização
+    vidas_salvas = resultado.reducao_crimes
+    reducao_pct = resultado.reducao_percentual
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        #### 🔍 Diagnóstico da Situação Atual
+        """)
+        st.markdown(f"""
+        **Cenário 2022:**
+        - **{total_mortes:,.0f}** mortes violentas no Brasil
+        - **R$ {total_orcamento/1000:.1f} bilhões** em orçamento de segurança
+        - Taxa média de **{media_taxa:.1f}** mortes/100 mil hab.
+        
+        **Extremos:**
+        - 🔴 Mais violento: **{estado_mais_violento['estado']}** ({estado_mais_violento['taxa_mortes_100k']:.1f}/100k)
+        - 🟢 Menos violento: **{estado_menos_violento['estado']}** ({estado_menos_violento['taxa_mortes_100k']:.1f}/100k)
+        - 💰 Maior gasto/capita: **{estado_maior_gasto['estado']}** (R$ {estado_maior_gasto['gasto_per_capita']:,.0f})
+        - 💸 Menor gasto/capita: **{estado_menor_gasto['estado']}** (R$ {estado_menor_gasto['gasto_per_capita']:,.0f})
+        """)
+    
+    with col2:
+        st.markdown("""
+        #### ✅ Potencial da Otimização
+        """)
+        st.markdown(f"""
+        **Com investimento adicional de R$ 5 bilhões:**
+        - **{vidas_salvas:,.0f}** vidas potencialmente salvas
+        - Redução de **{reducao_pct:.2f}%** nas mortes violentas
+        
+        **Estados que mais se beneficiariam:**
+        """)
+        top3 = resultado.alocacao.nlargest(3, 'reducao_mortes')[['estado', 'reducao_mortes']]
+        for _, row in top3.iterrows():
+            st.markdown(f"- **{row['estado']}**: {row['reducao_mortes']:,.0f} vidas")
+    
+    st.markdown("---")
+    
+    # =========================================================================
+    # SEÇÃO 4: RECOMENDAÇÕES
+    # =========================================================================
+    st.subheader("💡 Recomendações Baseadas nos Dados")
+    
+    st.markdown("""
+    Com base na análise de Pesquisa Operacional realizada, recomendamos:
+    
+    #### 1. Priorização por Elasticidade
+    Estados com **maior elasticidade** (maior resposta ao investimento) devem receber 
+    proporcionalmente mais recursos, pois o retorno em vidas salvas é maior.
+    
+    #### 2. Limite de Concentração
+    O modelo inclui **restrição de investimento máximo** por estado para evitar que 
+    recursos se concentrem em poucos estados, garantindo cobertura nacional.
+    
+    #### 3. Investimento Frontloaded
+    Análise multi-período demonstra que **investir mais cedo** gera resultados acumulados 
+    superiores a investir uniformemente ou postergar recursos.
+    
+    #### 4. Monitoramento Contínuo
+    Os resultados do **backtesting** indicam que o modelo tem boa capacidade preditiva,
+    mas deve ser recalibrado anualmente com novos dados.
+    
+    #### 5. Gestão, não apenas Recursos
+    Estados com **baixa eficiência** mesmo com alto gasto per capita precisam de 
+    **melhorias na gestão**, não apenas mais recursos.
+    """)
+    
+    st.markdown("---")
+    
+    # =========================================================================
+    # SEÇÃO 5: FONTES DOS DADOS
+    # =========================================================================
+    st.subheader("📚 Fontes dos Dados")
+    
+    st.markdown("""
+    #### Dados de Violência
+    
+    | Fonte | Descrição | Período | Acesso |
+    |-------|-----------|---------|--------|
+    | **Atlas da Violência** | Taxas de homicídios por UF | 1989-2022 | [ipea.gov.br/atlasviolencia](https://www.ipea.gov.br/atlasviolencia/) |
+    | **IPEA Data** | Séries históricas de mortes violentas | 1989-2022 | [ipeadata.gov.br](http://www.ipeadata.gov.br/) |
+    | **DATASUS/SIM** | Sistema de Informação sobre Mortalidade | 1996-2022 | [datasus.saude.gov.br](https://datasus.saude.gov.br/) |
+    
+    #### Dados de Orçamento
+    
+    | Fonte | Descrição | Período | Acesso |
+    |-------|-----------|---------|--------|
+    | **Anuário Brasileiro de Segurança Pública** | Despesas estaduais com segurança | 2021-2022 | [forumseguranca.org.br](https://forumseguranca.org.br/anuario-brasileiro-seguranca-publica/) |
+    | **SICONFI/Tesouro Nacional** | Execução orçamentária dos estados | 2013-2022 | [siconfi.tesouro.gov.br](https://siconfi.tesouro.gov.br/) |
+    | **SINESP** | Sistema Nacional de Segurança Pública | 2015-2022 | [sinesp.gov.br](https://www.gov.br/mj/pt-br/assuntos/sua-seguranca/seguranca-publica/sinesp-1) |
+    
+    #### Dados Demográficos
+    
+    | Fonte | Descrição | Período | Acesso |
+    |-------|-----------|---------|--------|
+    | **IBGE** | Censo e estimativas populacionais | 2022 | [ibge.gov.br](https://www.ibge.gov.br/) |
+    
+    #### Repositórios e APIs (GitHub)
+    
+    | Repositório | Descrição |
+    |-------------|-----------|
+    | [basedosdados/sdk](https://github.com/basedosdados/sdk) | SDK para acessar dados públicos brasileiros (BigQuery) |
+    | [kahefl/Homicidios-Brasil](https://github.com/kahefl/Homicidios-Brasil) | Dados do SINESP sobre homicídios |
+    | [Diogocenteno/Problema-da-Seguranca-Publica](https://github.com/Diogocenteno/Problema-da-Seguranca-Publica-no-Brasil-e-a-Analise-de-Dados) | Análise de dados de segurança pública |
+    
+    #### Limitações dos Dados
+    
+    - **Subnotificação**: Alguns estados têm maior subnotificação de crimes
+    - **Metodologia**: Classificação de "mortes violentas" pode variar entre UFs
+    - **Tocantins**: Dados de orçamento indisponíveis (usamos média regional)
+    - **Elasticidades**: Estimadas por regressão, sujeitas a erros de especificação
+    """)
+
+
+# =============================================================================
 # FUNÇÃO PRINCIPAL
 # =============================================================================
 def main():
@@ -1587,15 +1904,16 @@ def main():
     # Renderiza sidebar
     render_sidebar()
     
-    # Abas principais - 7 abas com todas as funcionalidades
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    # Abas principais - 8 abas com todas as funcionalidades
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
         "📊 Dashboard",
         "⚙️ Otimização",
         "📈 Comparativo",
         "🔍 Sensibilidade",
         "🎲 Monte Carlo",
         "🔄 Backtesting",
-        "📅 Multi-Período"
+        "📅 Multi-Período",
+        "📋 Conclusões"
     ])
     
     with tab1:
@@ -1619,12 +1937,23 @@ def main():
     with tab7:
         render_multi_periodo(df)
     
+    with tab8:
+        render_conclusoes(df)
+    
     # Footer
     st.markdown("---")
     st.markdown("""
     <div style="text-align: center; color: #888; font-size: 0.9rem;">
-        <p>Trabalho Acadêmico - Pesquisa Operacional</p>
-        <p>Dados: Atlas da Violência (IPEA) | Anuário Brasileiro de Segurança Pública (FBSP)</p>
+        <p><strong>Trabalho Acadêmico - Pesquisa Operacional</strong></p>
+        <p>
+            Dados: <a href="https://www.ipea.gov.br/atlasviolencia/" target="_blank">Atlas da Violência (IPEA)</a> | 
+            <a href="https://forumseguranca.org.br/anuario-brasileiro-seguranca-publica/" target="_blank">Anuário FBSP 2023</a> | 
+            <a href="https://www.ibge.gov.br/" target="_blank">IBGE</a>
+        </p>
+        <p>
+            Método: Programação Linear (Simplex) via <a href="https://github.com/coin-or/pulp" target="_blank">PuLP/CBC</a> | 
+            Interface: <a href="https://streamlit.io/" target="_blank">Streamlit</a>
+        </p>
     </div>
     """, unsafe_allow_html=True)
 
