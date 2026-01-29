@@ -465,13 +465,13 @@ Nota-se que não há correlação linear simples entre gasto e resultado. Estado
 
 \subsection{Análise de Eficiência}
 
-Definimos o índice de eficiência como:
+Definimos o índice de eficiência como a razão entre o resultado relativo (quanto menor a taxa, melhor) e o custo relativo (quanto maior o gasto, pior):
 
 \begin{equation}
-\text{Eficiência}_i = \frac{\text{Gasto per capita}_i / \text{Média nacional}}{\text{Taxa de violência}_i / \text{Média nacional}}
+\text{Eficiência}_i = \frac{\text{Taxa média} / \text{Taxa}_i}{\text{Gasto}_i / \text{Gasto médio}}
 \end{equation}
 
-Valores acima de 1 indicam eficiência acima da média; abaixo de 1, abaixo da média.
+Valores acima de 1 indicam que o estado consegue resultados melhores que a média com custos menores que a média. A média nacional de gasto per capita é R\$ 633 e a taxa média de mortes é 81,7 por 100 mil habitantes.
 
 \begin{figure}[H]
     \centering
@@ -481,7 +481,9 @@ Valores acima de 1 indicam eficiência acima da média; abaixo de 1, abaixo da m
     \footnotesize{Fonte: Elaboração própria (2026).}
 \end{figure}
 
-Os cinco estados mais eficientes são: São Paulo (2,41), Santa Catarina (2,03), Minas Gerais (1,24), Distrito Federal (1,12) e Rio Grande do Sul (1,02). Os cinco menos eficientes são: Amapá (0,30), Bahia (0,31), Ceará (0,33), Sergipe (0,38) e Pernambuco (0,41).
+Os cinco estados mais eficientes são: São Paulo (2,82), Distrito Federal (2,37), Maranhão (2,37), Piauí (2,09) e Santa Catarina (1,87). Estes estados conseguem taxas de violência abaixo ou próximas da média com gastos abaixo da média nacional.
+
+Os cinco menos eficientes são: Tocantins (0,43), Amapá (0,44), Rondônia (0,50), Roraima (0,54) e Mato Grosso (0,56). Estes estados gastam muito acima da média (R\$ 1.000+/capita) mas mantêm taxas de violência acima de 90 por 100 mil habitantes.
 
 \subsection{Resultado da Otimização}
 
@@ -589,11 +591,11 @@ Esses valores indicam que o modelo tem capacidade preditiva razoável, embora de
 
 Os resultados deste trabalho permitem as seguintes conclusões:
 
-Primeiro, a eficiência no uso de recursos de segurança varia significativamente entre os estados brasileiros. Estados como São Paulo (índice 2,41) são quase oito vezes mais eficientes que Amapá (índice 0,30) no uso de recursos de segurança.
+Primeiro, a eficiência no uso de recursos de segurança varia significativamente entre os estados brasileiros. Estados como São Paulo (índice 2,82) são quase sete vezes mais eficientes que Tocantins (índice 0,43) no uso de recursos de segurança. São Paulo gasta apenas R\$ 334/capita e tem a menor taxa (54,8/100k), enquanto Tocantins gasta R\$ 1.200/capita e tem taxa de 100,3/100k.
 
 Segundo, a otimização gera impacto significativo. Uma distribuição otimizada de R\$ 5 bilhões poderia salvar aproximadamente 1.875 vidas por ano.
 
-Terceiro, gasto não garante resultado. Não há correlação simples entre volume de investimento e redução de violência. A qualidade da gestão é determinante.
+Terceiro, gasto não garante resultado. Estados do Norte (TO, AP, RO, RR, AC) gastam muito mais que a média nacional (R\$ 633/capita), mas mantêm taxas de violência acima de 60/100k. A qualidade da gestão é determinante.
 
 Quarto, a priorização importa. Estados com alta elasticidade e alto volume de mortes (BA, PE, CE) devem ser priorizados para maximizar o impacto.
 

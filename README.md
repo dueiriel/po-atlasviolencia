@@ -73,27 +73,31 @@ xᵢ ≥ 0          ∀i          (não-negatividade)
 
 ## Conclusões Principais
 
-### Estados Mais Eficientes (melhor resultado por R$ investido)
+### Estados Mais Eficientes (menor taxa relativa ao gasto)
 
-Com base na análise do índice `(gasto per capita / taxa de mortes)`, os estados com **maior eficiência** no uso de recursos são:
+Com base na análise do índice `(taxa média / taxa estado) / (gasto estado / gasto médio)`, os estados com **maior eficiência** no uso de recursos são:
 
 | Ranking | Estado | Gasto/Capita | Taxa/100k | Índice de Eficiência |
 |---------|--------|--------------|-----------|----------------------|
-| 1º | São Paulo | R$ 598 | 12.5 | 2.41 |
-| 2º | Santa Catarina | R$ 412 | 10.2 | 2.03 |
-| 3º | Minas Gerais | R$ 389 | 15.8 | 1.24 |
-| 4º | Distrito Federal | R$ 1.247 | 17.3 | 1.12 |
-| 5º | Rio Grande do Sul | R$ 401 | 16.9 | 1.02 |
+| 1º | São Paulo | R$ 334 | 54.8 | 2.82 |
+| 2º | Distrito Federal | R$ 407 | 53.5 | 2.37 |
+| 3º | Maranhão | R$ 304 | 71.6 | 2.37 |
+| 4º | Piauí | R$ 306 | 80.8 | 2.09 |
+| 5º | Santa Catarina | R$ 443 | 62.6 | 1.87 |
+
+**Interpretação:** Estes estados conseguem taxas de violência abaixo da média com gastos abaixo da média nacional (R$ 633/capita).
 
 ### Estados Menos Eficientes (alto gasto, alta violência)
 
 | Ranking | Estado | Gasto/Capita | Taxa/100k | Índice de Eficiência |
 |---------|--------|--------------|-----------|----------------------|
-| 27º | Bahia | R$ 285 | 46.8 | 0.31 |
-| 26º | Sergipe | R$ 318 | 42.1 | 0.38 |
-| 25º | Amapá | R$ 276 | 45.6 | 0.30 |
-| 24º | Pernambuco | R$ 352 | 43.2 | 0.41 |
-| 23º | Ceará | R$ 296 | 45.0 | 0.33 |
+| 27º | Tocantins | R$ 1.200 | 100.3 | 0.43 |
+| 26º | Amapá | R$ 1.236 | 94.2 | 0.44 |
+| 25º | Rondônia | R$ 1.013 | 101.1 | 0.50 |
+| 24º | Roraima | R$ 996 | 96.0 | 0.54 |
+| 23º | Mato Grosso | R$ 996 | 93.5 | 0.56 |
+
+**Interpretação:** Estes estados gastam muito acima da média nacional mas mantêm taxas de violência altas, indicando ineficiência na aplicação dos recursos.
 
 ### Impacto da Otimização
 
