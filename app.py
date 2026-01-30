@@ -1,17 +1,8 @@
 # -*- coding: utf-8 -*-
-# =============================================================================
-# APLICAÇÃO STREAMLIT - OTIMIZAÇÃO DE RECURSOS DE SEGURANÇA PÚBLICA
-# =============================================================================
-# Trabalho Acadêmico - Pesquisa Operacional
-#
-# Esta aplicação permite:
-# 1. Visualizar dados atuais de violência e orçamento por estado (Dashboard)
-# 2. Calcular alocação ótima de recursos (Otimização)
-# 3. Comparar cenários antes e depois (Comparativo)
-#
-# Autor: [Seu Nome]
-# Disciplina: Pesquisa Operacional
-# =============================================================================
+"""
+Otimização de Recursos de Segurança Pública - Trabalho de Pesquisa Operacional
+Programação Linear (Simplex) para alocação ótima entre estados brasileiros.
+"""
 
 import streamlit as st
 import pandas as pd
@@ -23,8 +14,7 @@ import json
 import requests
 from pathlib import Path
 
-# Importa módulos locais
-from dados import carregar_dados_consolidados, obter_coordenadas_estados
+from dados import carregar_dados_consolidados, obter_coordenadas_estados, ANOS_DISPONIVEIS
 from otimizacao import (
     otimizar_alocacao, 
     ResultadoOtimizacao,
@@ -32,7 +22,6 @@ from otimizacao import (
     explicar_elasticidade
 )
 
-# Módulos avançados de Pesquisa Operacional
 from analise_estatistica import atualizar_elasticidade_dados, gerar_relatorio_elasticidade
 from sensibilidade import (
     analisar_sensibilidade_orcamento,
@@ -43,10 +32,8 @@ from sensibilidade import (
 from monte_carlo import executar_monte_carlo
 from backtesting import executar_backtest, validar_modelo_rolling
 from multi_periodo import otimizar_multi_periodo, comparar_estrategias
+from dea import calcular_dea_ccr, identificar_benchmarks, calcular_metas, resumo_dea
 
-# =============================================================================
-# CONFIGURAÇÃO DA PÁGINA
-# =============================================================================
 st.set_page_config(
     page_title="Otimização de Segurança Pública",
     page_icon="🔐",
@@ -54,7 +41,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# CSS customizado para melhor visualização
 st.markdown("""
 <style>
     .main-header {
@@ -70,38 +56,94 @@ st.markdown("""
         padding: 1rem;
         margin: 0.5rem 0;
     }
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 2rem;
+    
+    div[data-testid="stHorizontalBlock"]:has(div[data-testid="stRadio"]) {
+        background-color: transparent;
+        border-bottom: 1px solid #e0e0e0;
+        padding-bottom: 0;
+        margin-bottom: 1rem;
     }
-    .stTabs [data-baseweb="tab"] {
-        font-size: 1.1rem;
+    
+    div[data-testid="stRadio"] > div {
+        flex-direction: row !important;
+        gap: 0 !important;
+        background: transparent;
+    }
+    
+    div[data-testid="stRadio"] label {
+        background-color: transparent;
+        border: none;
+        border-bottom: 3px solid transparent;
+        border-radius: 0;
+        padding: 0.75rem 1.5rem;
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 500;
+        color: #555;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    div[data-testid="stRadio"] label:hover {
+        color: #1f77b4;
+        background-color: rgba(31, 119, 180, 0.05);
+    }
+    
+    div[data-testid="stRadio"] label[data-checked="true"] {
+        color: #1f77b4;
+        border-bottom: 3px solid #1f77b4;
+        background-color: transparent;
         font-weight: 600;
+    }
+    
+    div[data-testid="stRadio"] label span[data-testid="stMarkdownContainer"] {
+        margin-left: 0 !important;
+    }
+    
+    div[data-testid="stRadio"] input[type="radio"] {
+        display: none !important;
+    }
+    
+    div[data-testid="stRadio"] label[data-checked="true"]::before {
+        display: none !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
 
-# =============================================================================
-# CACHE DE DADOS
-# =============================================================================
 @st.cache_data
-def carregar_dados():
-    """
-    Carrega e cacheia os dados consolidados.
-    Usa elasticidade calculada por regressão da série histórica 1989-2022.
-    """
-    df = carregar_dados_consolidados()
-    # Substitui elasticidade estimada pela calculada via regressão linear
+def carregar_dados(ano: int = 2022):
+    """Carrega dados consolidados com elasticidade via regressão."""
+    df = carregar_dados_consolidados(ano=ano)
     df = atualizar_elasticidade_dados(df)
     return df
 
 
 @st.cache_data
+def carregar_dados_todos_anos():
+    """Carrega dados 2013-2023 para análises temporais."""
+    from dados import carregar_gastos_todos_anos, carregar_homicidios
+    
+    df_gastos = carregar_gastos_todos_anos()
+    df_homicidios = carregar_homicidios()
+    
+    df = pd.merge(
+        df_gastos,
+        df_homicidios[['sigla', 'ano', 'homicidios']],
+        on=['sigla', 'ano'],
+        how='left'
+    )
+    
+    df['taxa_mortes_100k'] = (df['homicidios'] / df['populacao'] * 100000).round(2)
+    df['gasto_milhoes'] = (df['gasto_seguranca'] / 1e6).round(2)
+    df['gasto_per_capita'] = (df['gasto_seguranca'] / df['populacao']).round(2)
+    
+    return df
+
+
+@st.cache_data
 def carregar_geojson_brasil():
-    """
-    Carrega GeoJSON dos estados brasileiros para o mapa coroplético.
-    Fonte: Instituto Brasileiro de Geografia e Estatística (IBGE)
-    """
+    """Carrega GeoJSON dos estados brasileiros."""
     url = "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/brazil-states.geojson"
     
     try:
@@ -111,30 +153,24 @@ def carregar_geojson_brasil():
     except:
         pass
     
-    # Fallback: retorna None se não conseguir carregar
     return None
 
 
-# =============================================================================
-# FUNÇÕES PRÉ-CALCULADAS (valores padrão)
-# =============================================================================
 @st.cache_data
 def obter_otimizacao_padrao(_df):
-    """Calcula otimização com parâmetros padrão para exibição inicial."""
+    """Otimização com parâmetros padrão."""
     return otimizar_alocacao(_df, orcamento_disponivel=5000, verbose=False)
 
 
 @st.cache_data
 def obter_sensibilidade_padrao(_df):
-    """Calcula análise de sensibilidade com parâmetros padrão."""
+    """Análise de sensibilidade com parâmetros padrão."""
     sens = analisar_sensibilidade_orcamento(_df, orcamento_base=5000)
     shadow = calcular_shadow_prices(_df, orcamento=5000)
     
-    # Análise de cenários precisa de dicionário
     cenarios_dict = {'pessimista': 3000, 'base': 5000, 'otimista': 7000}
     cenarios_df = analisar_cenarios(_df, cenarios_dict)
     
-    # Converte para formato esperado
     cenarios = {}
     for _, row in cenarios_df.iterrows():
         cenarios[row['cenario']] = {'vidas_salvas': row['reducao_crimes']}
@@ -145,11 +181,11 @@ def obter_sensibilidade_padrao(_df):
 
 @st.cache_data
 def obter_monte_carlo_padrao(_df):
-    """Executa Monte Carlo com parâmetros padrão (menos simulações para ser rápido)."""
+    """Monte Carlo com parâmetros padrão (250 simulações)."""
     return executar_monte_carlo(
         df_dados=_df,
         orcamento=5000,
-        n_simulacoes=250,  # Menos para carregar rápido
+        n_simulacoes=250,
         incerteza_elasticidade=0.15,
         incerteza_taxa=0.08,
         verbose=False
@@ -158,22 +194,29 @@ def obter_monte_carlo_padrao(_df):
 
 @st.cache_data
 def obter_backtesting_padrao():
-    """Executa backtesting com parâmetros padrão."""
+    """Backtesting com parâmetros padrão."""
     return validar_modelo_rolling(janela_treino=5, janela_teste=1, ano_inicio=2010, ano_fim=2022)
 
 
 @st.cache_data  
 def obter_multiperiodo_padrao(_df):
-    """Calcula estratégias multi-período com parâmetros padrão."""
+    """Multi-período com parâmetros padrão."""
     return comparar_estrategias(_df, orcamento_total=25000, n_periodos=5)
 
 
-# =============================================================================
-# SIDEBAR - EXPLICAÇÃO DO MODELO
-# =============================================================================
 def render_sidebar():
-    """Renderiza a sidebar com explicação educacional do modelo."""
+    """Sidebar com seletor de ano e explicação do modelo."""
     
+    st.sidebar.title("📅 Seleção de Ano")
+    
+    ano_selecionado = st.sidebar.selectbox(
+        "Ano de análise:",
+        options=sorted(ANOS_DISPONIVEIS, reverse=True),
+        index=0,  # Default: 2023 (primeiro da lista ordenada decrescente)
+        help="Selecione o ano para visualizar os dados. Disponível de 2013 a 2023."
+    )
+    
+    st.sidebar.markdown("---")
     st.sidebar.title("📚 Explicação do Modelo")
     
     with st.sidebar.expander("🎯 Objetivo", expanded=True):
@@ -198,13 +241,9 @@ def render_sidebar():
         st.markdown("""
         Onde:
         - $C_i$ = crimes no estado $i$
-        - $ε_i$ = elasticidade
         - $O_i$ = orçamento atual
         - $B$ = orçamento disponível
         """)
-    
-    with st.sidebar.expander("📊 Elasticidade Crime-Gasto"):
-        st.markdown(explicar_elasticidade())
     
     with st.sidebar.expander("🔧 Método de Solução"):
         st.markdown("""
@@ -227,25 +266,24 @@ def render_sidebar():
     **📖 Fontes dos Dados:**
     - [Atlas da Violência](https://www.ipea.gov.br/atlasviolencia/) (IPEA)
     - [Anuário de Segurança Pública](https://forumseguranca.org.br/) (FBSP)
-    - IBGE (População)
+    - [SICONFI](https://siconfi.tesouro.gov.br/) (Gastos)
     """)
-
-
-# =============================================================================
-# ABA 1: DASHBOARD
-# =============================================================================
-def render_dashboard(df: pd.DataFrame, geojson):
-    """Renderiza a aba de Dashboard com visualizações dos dados atuais."""
     
-    st.header("📊 Dashboard - Situação Atual")
+    return ano_selecionado
+
+
+def render_dashboard(df: pd.DataFrame, geojson, ano: int):
+    """Aba Dashboard: visualização dos dados atuais."""
+    
+    st.header(f"📊 Dashboard - Situação em {ano}")
     
     with st.expander("ℹ️ **Sobre esta aba** - Clique para expandir", expanded=False):
-        st.markdown("""
+        st.markdown(f"""
         ### O que é o Dashboard?
         
-        Esta aba apresenta uma **visão geral da situação atual** de segurança pública no Brasil,
+        Esta aba apresenta uma **visão geral da situação** de segurança pública no Brasil,
         utilizando dados consolidados do **Atlas da Violência (IPEA)** e do **Anuário de Segurança 
-        Pública (FBSP)** referentes ao ano de 2022.
+        Pública (FBSP)** referentes ao ano de **{ano}**.
         
         #### Dados exibidos:
         - **Mortes Violentas**: Número absoluto de homicídios e mortes violentas intencionais
@@ -260,13 +298,12 @@ def render_dashboard(df: pd.DataFrame, geojson):
         - **Por região**: Agrupamento dos estados por região geográfica
         
         #### Fonte dos dados:
-        - Atlas da Violência: Série histórica 1989-2022 (IPEA/FBSP)
-        - Anuário Brasileiro de Segurança Pública 2023 (FBSP)
+        - Atlas da Violência: Série histórica 2013-2023 (IPEA/FBSP)
+        - Anuário Brasileiro de Segurança Pública (FBSP)
         """)
     
-    st.markdown("Visualização dos dados de violência e orçamento de segurança pública por estado (2022).")
+    st.markdown(f"Visualização dos dados de violência e orçamento de segurança pública por estado ({ano}).")
     
-    # Métricas resumo
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
@@ -274,7 +311,7 @@ def render_dashboard(df: pd.DataFrame, geojson):
         st.metric(
             label="Total de Mortes Violentas",
             value=f"{total_mortes:,.0f}",
-            help="Número total de mortes violentas em 2022"
+            help=f"Número total de mortes violentas em {ano}"
         )
     
     with col2:
@@ -290,7 +327,7 @@ def render_dashboard(df: pd.DataFrame, geojson):
         st.metric(
             label="Orçamento Total (R$ bi)",
             value=f"{total_orcamento/1000:.1f}",
-            help="Soma dos orçamentos de segurança de todos os estados"
+            help=f"Soma dos orçamentos de segurança de todos os estados em {ano}"
         )
     
     with col4:
@@ -303,17 +340,14 @@ def render_dashboard(df: pd.DataFrame, geojson):
     
     st.markdown("---")
     
-    # Mapa e gráficos
     col_mapa, col_grafico = st.columns([1.2, 1])
     
     with col_mapa:
         st.subheader("🗺️ Mapa de Calor - Taxa de Mortes por 100 mil hab.")
         
-        # Prepara dados para o mapa
         df_mapa = df.copy()
         
         if geojson:
-            # Mapa coroplético com GeoJSON
             fig_mapa = px.choropleth(
                 df_mapa,
                 geojson=geojson,
@@ -339,7 +373,6 @@ def render_dashboard(df: pd.DataFrame, geojson):
                 visible=False
             )
         else:
-            # Fallback: mapa de pontos se não conseguir carregar GeoJSON
             coords = obter_coordenadas_estados()
             df_mapa = pd.merge(df_mapa, coords, on='sigla')
             
@@ -365,14 +398,14 @@ def render_dashboard(df: pd.DataFrame, geojson):
             coloraxis_colorbar=dict(
                 title="Taxa/100k",
                 tickformat=".0f"
-            )
+            ),
+            dragmode=False
         )
-        st.plotly_chart(fig_mapa, use_container_width=True)
+        st.plotly_chart(fig_mapa, use_container_width=True, config={'displayModeBar': False, 'scrollZoom': False})
     
     with col_grafico:
         st.subheader("📈 Ranking Completo - Taxa de Violência por Estado")
         
-        # Mostra TODOS os 27 estados ordenados
         df_ranking = df.sort_values('taxa_mortes_100k', ascending=True)
         
         fig_bar = px.bar(
@@ -387,111 +420,185 @@ def render_dashboard(df: pd.DataFrame, geojson):
         )
         fig_bar.update_traces(texttemplate='%{text:.1f}', textposition='outside')
         fig_bar.update_layout(
-            height=700,  # Mais alto para caber todos os estados
+            height=700,
             showlegend=False,
             coloraxis_showscale=False,
             xaxis_title="Taxa de Mortes por 100 mil hab.",
-            yaxis_title=""
+            yaxis_title="",
+            xaxis=dict(fixedrange=True),
+            yaxis=dict(fixedrange=True),
+            dragmode=False
         )
-        st.plotly_chart(fig_bar, use_container_width=True)
+        st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False, 'scrollZoom': False})
     
-    # Segunda linha de gráficos
     st.markdown("---")
-    col_scatter, col_regiao = st.columns(2)
+    col_mapa_gasto, col_grafico_gasto = st.columns([1, 1.2])
     
-    with col_scatter:
-        st.subheader("💰 Relação: Gasto Per Capita × Taxa de Violência")
+    with col_mapa_gasto:
+        st.subheader("🗺️ Mapa de Calor - Gasto Per Capita (R$)")
         
-        fig_scatter = px.scatter(
-            df,
+        df_mapa_gasto = df.copy()
+        
+        if geojson is not None:
+            fig_mapa_gasto = px.choropleth(
+                df_mapa_gasto,
+                geojson=geojson,
+                locations='sigla',
+                featureidkey="properties.sigla",
+                color='gasto_per_capita',
+                color_continuous_scale='Blues',
+                hover_name='estado',
+                hover_data={
+                    'sigla': False,
+                    'gasto_per_capita': ':,.0f',
+                    'taxa_mortes_100k': ':.1f',
+                    'populacao': ':,.0f'
+                },
+                labels={
+                    'gasto_per_capita': 'Gasto per capita (R$)',
+                    'taxa_mortes_100k': 'Taxa/100k',
+                    'populacao': 'População'
+                }
+            )
+            fig_mapa_gasto.update_geos(
+                fitbounds="locations",
+                visible=False
+            )
+        else:
+            coords = obter_coordenadas_estados()
+            df_mapa_gasto = pd.merge(df_mapa_gasto, coords, on='sigla')
+            
+            fig_mapa_gasto = px.scatter_geo(
+                df_mapa_gasto,
+                lat='latitude',
+                lon='longitude',
+                color='gasto_per_capita',
+                size='populacao',
+                hover_name='estado',
+                color_continuous_scale='Blues',
+                scope='south america',
+                size_max=40
+            )
+            fig_mapa_gasto.update_geos(
+                center=dict(lat=-15, lon=-55),
+                projection_scale=3
+            )
+        
+        fig_mapa_gasto.update_layout(
+            margin=dict(l=0, r=0, t=0, b=0),
+            height=450,
+            coloraxis_colorbar=dict(
+                title="R$/hab",
+                tickformat=",.0f"
+            ),
+            dragmode=False
+        )
+        st.plotly_chart(fig_mapa_gasto, use_container_width=True, config={'displayModeBar': False, 'scrollZoom': False})
+    
+    with col_grafico_gasto:
+        st.subheader("💰 Ranking Completo - Gasto Per Capita por Estado")
+        
+        df_ranking_gasto = df.sort_values('gasto_per_capita', ascending=True)
+        
+        fig_bar_gasto = px.bar(
+            df_ranking_gasto,
             x='gasto_per_capita',
-            y='taxa_mortes_100k',
-            size='populacao',
-            color='regiao',
-            hover_name='estado',
-            text='sigla',
-            labels={
-                'gasto_per_capita': 'Gasto Per Capita (R$)',
-                'taxa_mortes_100k': 'Taxa por 100 mil',
-                'regiao': 'Região',
-                'populacao': 'População'
-            }
+            y='sigla',
+            orientation='h',
+            color='gasto_per_capita',
+            color_continuous_scale='Blues',
+            text='gasto_per_capita',
+            labels={'gasto_per_capita': 'Gasto Per Capita (R$)', 'sigla': 'Estado'}
         )
-        fig_scatter.update_traces(textposition='top center', textfont_size=9)
-        fig_scatter.update_layout(height=400)
-        st.plotly_chart(fig_scatter, use_container_width=True)
+        fig_bar_gasto.update_traces(texttemplate='R$ %{text:,.0f}', textposition='outside')
+        fig_bar_gasto.update_layout(
+            height=700,
+            showlegend=False,
+            coloraxis_showscale=False,
+            xaxis_title="Gasto Per Capita (R$)",
+            yaxis_title="",
+            xaxis=dict(fixedrange=True),
+            yaxis=dict(fixedrange=True),
+            dragmode=False
+        )
+        st.plotly_chart(fig_bar_gasto, use_container_width=True, config={'displayModeBar': False, 'scrollZoom': False})
     
-    with col_regiao:
-        st.subheader("🗺️ Comparativo por Região")
-        
-        df_regiao = df.groupby('regiao').agg({
-            'mortes_violentas': 'sum',
-            'populacao': 'sum',
-            'orcamento_2022_milhoes': 'sum'
-        }).reset_index()
-        
-        df_regiao['taxa_regiao'] = df_regiao['mortes_violentas'] / df_regiao['populacao'] * 100000
-        df_regiao['gasto_pc_regiao'] = df_regiao['orcamento_2022_milhoes'] * 1e6 / df_regiao['populacao']
-        
-        fig_regiao = make_subplots(
-            rows=1, cols=2,
-            subplot_titles=("Taxa por 100 mil", "Gasto Per Capita"),
-            specs=[[{"type": "bar"}, {"type": "bar"}]]
-        )
-        
-        fig_regiao.add_trace(
-            go.Bar(
-                x=df_regiao['regiao'],
-                y=df_regiao['taxa_regiao'],
-                marker_color=['#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#1f77b4'],
-                name='Taxa'
-            ),
-            row=1, col=1
-        )
-        
-        fig_regiao.add_trace(
-            go.Bar(
-                x=df_regiao['regiao'],
-                y=df_regiao['gasto_pc_regiao'],
-                marker_color=['#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#1f77b4'],
-                name='Gasto PC'
-            ),
-            row=1, col=2
-        )
-        
-        fig_regiao.update_layout(height=400, showlegend=False)
-        st.plotly_chart(fig_regiao, use_container_width=True)
+    st.markdown("---")
+    st.subheader("🗺️ Comparativo por Região")
     
-    # Tabela de dados
+    df_regiao = df.groupby('regiao').agg({
+        'mortes_violentas': 'sum',
+        'populacao': 'sum',
+        'orcamento_2022_milhoes': 'sum'
+    }).reset_index()
+    
+    df_regiao['taxa_regiao'] = df_regiao['mortes_violentas'] / df_regiao['populacao'] * 100000
+    df_regiao['gasto_pc_regiao'] = df_regiao['orcamento_2022_milhoes'] * 1e6 / df_regiao['populacao']
+    
+    fig_regiao = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=("Taxa por 100 mil", "Gasto Per Capita"),
+        specs=[[{"type": "bar"}, {"type": "bar"}]]
+    )
+    
+    fig_regiao.add_trace(
+        go.Bar(
+            x=df_regiao['regiao'],
+            y=df_regiao['taxa_regiao'],
+            marker_color=['#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#1f77b4'],
+            name='Taxa'
+        ),
+        row=1, col=1
+    )
+    
+    fig_regiao.add_trace(
+        go.Bar(
+            x=df_regiao['regiao'],
+            y=df_regiao['gasto_pc_regiao'],
+            marker_color=['#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#1f77b4'],
+            name='Gasto PC'
+        ),
+        row=1, col=2
+    )
+    
+    fig_regiao.update_layout(
+        height=400, 
+        showlegend=False,
+        xaxis=dict(fixedrange=True),
+        yaxis=dict(fixedrange=True),
+        xaxis2=dict(fixedrange=True),
+        yaxis2=dict(fixedrange=True),
+        dragmode=False
+    )
+    st.plotly_chart(fig_regiao, use_container_width=True, config={'displayModeBar': False, 'scrollZoom': False})
+    
     st.markdown("---")
     with st.expander("📋 Ver Tabela de Dados Completa"):
+        df_tabela = df[[
+            'sigla', 'estado', 'regiao', 'populacao', 
+            'mortes_violentas', 'taxa_mortes_100k',
+            'orcamento_2022_milhoes', 'gasto_per_capita'
+        ]].copy()
+        df_tabela.columns = ['UF', 'Estado', 'Região', 'População', 'Mortes Violentas', 'Taxa/100k', 'Orçamento (R$ mi)', 'Gasto/Capita']
+        
         st.dataframe(
-            df[[
-                'sigla', 'estado', 'regiao', 'populacao', 
-                'mortes_violentas', 'taxa_mortes_100k',
-                'orcamento_2022_milhoes', 'gasto_per_capita', 
-                'elasticidade', 'indice_prioridade'
-            ]].style.format({
-                'populacao': '{:,.0f}',
-                'mortes_violentas': '{:,.0f}',
-                'taxa_mortes_100k': '{:.1f}',
-                'orcamento_2022_milhoes': '{:,.1f}',
-                'gasto_per_capita': 'R$ {:,.0f}',
-                'elasticidade': '{:.4f}',
-                'indice_prioridade': '{:.2f}'
-            }).background_gradient(subset=['taxa_mortes_100k'], cmap='YlOrRd'),
+            df_tabela.style.format({
+                'População': '{:,.0f}',
+                'Mortes Violentas': '{:,.0f}',
+                'Taxa/100k': '{:.1f}',
+                'Orçamento (R$ mi)': 'R$ {:,.1f}',
+                'Gasto/Capita': 'R$ {:,.0f}'
+            }).background_gradient(subset=['Taxa/100k'], cmap='YlOrRd'),
             use_container_width=True,
-            height=400
+            height=400,
+            hide_index=True
         )
 
 
-# =============================================================================
-# ABA 2: OTIMIZAÇÃO
-# =============================================================================
-def render_otimizacao(df: pd.DataFrame):
-    """Renderiza a aba de Otimização com controles e resultados."""
+def render_otimizacao(df: pd.DataFrame, ano: int = 2022):
+    """Aba Otimização: controles e resultados da PL."""
     
-    st.header("⚙️ Otimização - Alocação de Recursos")
+    st.header(f"⚙️ Otimização - Alocação de Recursos ({ano})")
     
     with st.expander("ℹ️ **Sobre esta aba** - Clique para expandir", expanded=False):
         st.markdown("""
@@ -505,9 +612,8 @@ def render_otimizacao(df: pd.DataFrame):
         inteligente baseada na eficiência de cada estado.
         
         #### Como funciona:
-        1. O modelo usa a **elasticidade crime-investimento** de cada estado (calculada por regressão 
-           sobre 34 anos de dados históricos)
-        2. Estados com maior elasticidade recebem mais recursos (pois o investimento é mais eficiente)
+        1. O modelo analisa a **relação entre investimento e resultado** de cada estado
+        2. Estados com maior potencial de redução recebem mais recursos
         3. Restrições garantem que nenhum estado fique sem recursos ou receba recursos excessivos
         
         #### Parâmetros configuráveis:
@@ -529,7 +635,6 @@ def render_otimizacao(df: pd.DataFrame):
     a alocação ótima de recursos que minimiza o número de crimes esperados.
     """)
     
-    # Controles de entrada
     st.markdown("### 📝 Parâmetros do Modelo")
     
     col1, col2, col3 = st.columns(3)
@@ -567,7 +672,6 @@ def render_otimizacao(df: pd.DataFrame):
     
     st.markdown("---")
     
-    # Botão de execução
     if st.button("🚀 Calcular Alocação Ótima", type="primary", use_container_width=True):
         
         with st.spinner("Executando otimização via Simplex..."):
@@ -579,18 +683,15 @@ def render_otimizacao(df: pd.DataFrame):
                 verbose=False
             )
         
-        # Armazena resultado no session state
         st.session_state['resultado_otimizacao'] = resultado
         st.session_state['orcamento_usado'] = orcamento_milhoes
     
-    # Exibe resultados se existirem
     if 'resultado_otimizacao' in st.session_state:
         resultado = st.session_state['resultado_otimizacao']
         
         if resultado.status == 'Optimal':
             st.success(f"✅ Solução ótima encontrada!")
             
-            # Métricas de resultado
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
@@ -607,7 +708,6 @@ def render_otimizacao(df: pd.DataFrame):
                 )
             
             with col3:
-                # Custo por vida salva
                 custo_por_vida = resultado.orcamento_usado / resultado.reducao_crimes if resultado.reducao_crimes > 0 else 0
                 st.metric(
                     "Custo por Vida Salva",
@@ -623,7 +723,6 @@ def render_otimizacao(df: pd.DataFrame):
             
             st.markdown("---")
             
-            # Gráfico de alocação
             st.subheader("📊 Distribuição da Alocação")
             
             df_alloc = resultado.alocacao.sort_values('investimento_milhoes', ascending=False)
@@ -648,11 +747,16 @@ def render_otimizacao(df: pd.DataFrame):
                         title="Investimento por Estado"
                     )
                     fig_alloc.update_traces(texttemplate='R$ %{text:.0f}M', textposition='outside')
-                    fig_alloc.update_layout(height=400)
-                    st.plotly_chart(fig_alloc, use_container_width=True)
+                    fig_alloc.update_layout(
+                        height=400,
+                        margin=dict(t=50, b=50),
+                        xaxis=dict(fixedrange=True),
+                        yaxis=dict(fixedrange=True, range=[0, df_alloc_positivo['investimento_milhoes'].max() * 1.15]),
+                        dragmode=False
+                    )
+                    st.plotly_chart(fig_alloc, use_container_width=True, config={'displayModeBar': False, 'scrollZoom': False})
                 
                 with col_pie:
-                    # Alocação por região
                     df_regiao = resultado.alocacao.groupby('regiao')['investimento_milhoes'].sum().reset_index()
                     df_regiao = df_regiao[df_regiao['investimento_milhoes'] > 0]
                     
@@ -665,41 +769,54 @@ def render_otimizacao(df: pd.DataFrame):
                     fig_pie.update_layout(height=400)
                     st.plotly_chart(fig_pie, use_container_width=True)
             
-            # Tabela detalhada
             st.subheader("📋 Detalhamento por Estado")
             
+            df_detalhe = resultado.alocacao[[
+                'sigla', 'estado', 'regiao',
+                'investimento_milhoes', 'mortes_antes', 
+                'mortes_depois', 'reducao_mortes', 'reducao_percentual'
+            ]].sort_values('investimento_milhoes', ascending=False).copy()
+            df_detalhe.columns = ['UF', 'Estado', 'Região', 'Investimento (R$ mi)', 'Mortes Antes', 'Mortes Depois', 'Vidas Salvas', 'Redução %']
+            
             st.dataframe(
-                resultado.alocacao[[
-                    'sigla', 'estado', 'regiao',
-                    'investimento_milhoes', 'mortes_antes', 
-                    'mortes_depois', 'reducao_mortes', 'reducao_percentual'
-                ]].sort_values('investimento_milhoes', ascending=False).style.format({
-                    'investimento_milhoes': 'R$ {:,.2f}',
-                    'mortes_antes': '{:,.0f}',
-                    'mortes_depois': '{:,.0f}',
-                    'reducao_mortes': '{:,.0f}',
-                    'reducao_percentual': '{:.2f}%'
-                }).background_gradient(subset=['investimento_milhoes'], cmap='Greens'),
+                df_detalhe.style.format({
+                    'Investimento (R$ mi)': 'R$ {:,.2f}',
+                    'Mortes Antes': '{:,.0f}',
+                    'Mortes Depois': '{:,.0f}',
+                    'Vidas Salvas': '{:,.0f}',
+                    'Redução %': '{:.2f}%'
+                }).background_gradient(subset=['Investimento (R$ mi)'], cmap='Greens'),
                 use_container_width=True,
-                height=400
+                height=400,
+                hide_index=True
             )
         
         else:
             st.error(f"❌ Não foi possível encontrar solução ótima. Status: {resultado.status}")
-            st.info("""
-            Possíveis causas:
-            - Orçamento muito baixo para atender restrições mínimas
-            - Parâmetros inconsistentes (máximo < mínimo)
             
-            Tente ajustar os parâmetros e executar novamente.
-            """)
+            if 'SolverError' in resultado.status:
+                st.warning("""
+                **Erro no solver CBC.** Isso pode acontecer quando:
+                - O problema tem restrições impossíveis de satisfazer
+                - O orçamento é muito baixo para os limites mínimos configurados
+                
+                **Sugestões:**
+                1. Aumente o orçamento disponível
+                2. Reduza o investimento mínimo por estado (%)
+                3. Tente com ano diferente (alguns anos têm dados mais completos)
+                """)
+            else:
+                st.info("""
+                **Possíveis causas:**
+                - Orçamento muito baixo para atender restrições mínimas
+                - Parâmetros inconsistentes (máximo < mínimo)
+                
+                Tente ajustar os parâmetros e executar novamente.
+                """)
 
 
-# =============================================================================
-# ABA 3: COMPARATIVO
-# =============================================================================
-def render_comparativo(df: pd.DataFrame):
-    """Renderiza a aba de Comparativo Antes vs. Depois."""
+def render_comparativo(df: pd.DataFrame, ano: int = 2022):
+    """Aba Comparativo: antes vs. depois da otimização."""
     
     st.header("📊 Comparativo - Antes vs. Depois")
     
@@ -734,7 +851,6 @@ def render_comparativo(df: pd.DataFrame):
         automaticamente. Caso contrário, exibe o cenário padrão (R$ 5 bilhões).
         """)
     
-    # Usa resultado da session_state se existir, senão usa o pré-calculado
     if 'resultado_otimizacao' in st.session_state:
         resultado = st.session_state['resultado_otimizacao']
         fonte = "personalizado"
@@ -743,7 +859,12 @@ def render_comparativo(df: pd.DataFrame):
         fonte = "padrão (R$ 5 bi)"
     
     if resultado.status != 'Optimal':
-        st.error("❌ A otimização não encontrou solução ótima.")
+        st.error(f"❌ A otimização não encontrou solução ótima. Status: {resultado.status}")
+        st.warning("""
+        **Possíveis causas:**
+        - Parâmetros incompatíveis (ex: orçamento muito baixo para os limites definidos)
+        - Tente aumentar o orçamento ou ajustar os limites mínimo/máximo por estado
+        """)
         return
     
     st.info(f"📊 Exibindo cenário **{fonte}**. Ajuste na aba Otimização para personalizar.")
@@ -752,11 +873,10 @@ def render_comparativo(df: pd.DataFrame):
     **Cenário analisado:** Orçamento suplementar de **R$ {resultado.orcamento_usado/1000:.2f} bilhões**
     """)
     
-    # Gráfico comparativo de barras - TODOS os estados
     st.subheader("📈 Comparativo de Mortes por Estado (Antes × Depois)")
     
     df_comp = resultado.alocacao.copy()
-    df_comp = df_comp.sort_values('mortes_antes', ascending=True)  # Todos os estados
+    df_comp = df_comp.sort_values('mortes_antes', ascending=True)
     
     fig_comp = go.Figure()
     
@@ -782,7 +902,7 @@ def render_comparativo(df: pd.DataFrame):
     
     fig_comp.update_layout(
         barmode='group',
-        height=750,  # Maior para caber todos os 27 estados
+        height=750,
         xaxis_title="Número de Mortes Violentas",
         yaxis_title="Estado",
         legend_title="Cenário",
@@ -791,7 +911,6 @@ def render_comparativo(df: pd.DataFrame):
     
     st.plotly_chart(fig_comp, use_container_width=True)
     
-    # Resumo por região
     st.markdown("---")
     st.subheader("🗺️ Impacto por Região")
     
@@ -838,7 +957,6 @@ def render_comparativo(df: pd.DataFrame):
         fig_reducao.update_layout(height=400)
         st.plotly_chart(fig_reducao, use_container_width=True)
     
-    # Análise de eficiência
     st.markdown("---")
     st.subheader("💡 Análise de Eficiência")
     
@@ -853,7 +971,7 @@ def render_comparativo(df: pd.DataFrame):
             df_efic,
             x='investimento_milhoes',
             y='reducao_mortes',
-            size='elasticidade',
+            size='populacao',
             color='custo_por_vida',
             hover_name='estado',
             text='sigla',
@@ -862,7 +980,7 @@ def render_comparativo(df: pd.DataFrame):
                 'investimento_milhoes': 'Investimento (R$ milhões)',
                 'reducao_mortes': 'Vidas Salvas',
                 'custo_por_vida': 'Custo/Vida (R$ mi)',
-                'elasticidade': 'Elasticidade'
+                'populacao': 'População'
             },
             title="Eficiência: Investimento vs Vidas Salvas"
         )
@@ -907,15 +1025,9 @@ def render_comparativo(df: pd.DataFrame):
         """)
 
 
-# =============================================================================
-# ABA 4: ANÁLISE DE SENSIBILIDADE
-# =============================================================================
-def render_sensibilidade(df: pd.DataFrame):
-    """
-    Renderiza a aba de análise de sensibilidade.
-    Inclui gráfico tornado, shadow prices e análise de cenários.
-    """
-    st.header("🔍 Análise de Sensibilidade")
+def render_sensibilidade(df: pd.DataFrame, ano: int = 2022):
+    """Aba Sensibilidade: tornado, shadow prices e cenários."""
+    st.header(f"🔍 Análise de Sensibilidade ({ano})")
     
     with st.expander("ℹ️ **Sobre esta aba** - Clique para expandir", expanded=False):
         st.markdown("""
@@ -954,7 +1066,6 @@ def render_sensibilidade(df: pd.DataFrame):
     Essencial para entender a robustez da solução e identificar parâmetros críticos.
     """)
     
-    # Parâmetros para recalcular
     with st.expander("⚙️ Ajustar Parâmetros", expanded=False):
         col1, col2 = st.columns(2)
         with col1:
@@ -978,7 +1089,6 @@ def render_sensibilidade(df: pd.DataFrame):
         
         recalcular = st.button("🔄 Recalcular com novos parâmetros", key="btn_sens")
     
-    # Usa cache ou recalcula
     if recalcular:
         with st.spinner("Calculando sensibilidade..."):
             resultados_sens = analisar_sensibilidade_orcamento(df, orcamento_base=orcamento_base)
@@ -996,7 +1106,6 @@ def render_sensibilidade(df: pd.DataFrame):
             
             fig_tornado = gerar_grafico_tornado(df, orcamento=orcamento_base)
     else:
-        # Usa valores pré-calculados
         dados_sens = obter_sensibilidade_padrao(df)
         resultados_sens = dados_sens['sensibilidade']
         shadow = dados_sens['shadow']
@@ -1005,7 +1114,6 @@ def render_sensibilidade(df: pd.DataFrame):
         orcamento_base = 5000
         variacao_pct = 20
     
-    # 1. Sensibilidade do Orçamento
     st.subheader("📊 Sensibilidade ao Orçamento")
     df_sens = resultados_sens if isinstance(resultados_sens, pd.DataFrame) else pd.DataFrame(resultados_sens)
     fig_sens = px.line(
@@ -1022,7 +1130,6 @@ def render_sensibilidade(df: pd.DataFrame):
     fig_sens.add_vline(x=orcamento_base, line_dash="dash", annotation_text="Base")
     st.plotly_chart(fig_sens, use_container_width=True)
     
-    # 2. Shadow Prices
     st.subheader("💰 Shadow Prices (Preços Sombra)")
     st.markdown("""
     O **Shadow Price** indica quanto a função objetivo (vidas salvas) 
@@ -1043,7 +1150,6 @@ def render_sensibilidade(df: pd.DataFrame):
             help="Custo marginal por vida salva adicional"
         )
     
-    # 3. Gráfico Tornado
     st.subheader("🌪️ Diagrama Tornado")
     st.markdown("""
     Mostra quais parâmetros têm maior impacto no resultado quando variados.
@@ -1051,7 +1157,6 @@ def render_sensibilidade(df: pd.DataFrame):
     """)
     st.plotly_chart(fig_tornado, use_container_width=True)
     
-    # 4. Análise de Cenários
     st.subheader("📋 Análise de Cenários")
     df_cenarios = pd.DataFrame([
         {
@@ -1084,14 +1189,8 @@ def render_sensibilidade(df: pd.DataFrame):
     )
 
 
-# =============================================================================
-# ABA 5: SIMULAÇÃO MONTE CARLO
-# =============================================================================
-def render_monte_carlo(df: pd.DataFrame):
-    """
-    Renderiza a aba de simulação Monte Carlo.
-    Quantifica incerteza nos resultados via simulação estocástica.
-    """
+def render_monte_carlo(df: pd.DataFrame, ano: int = 2022):
+    """Aba Monte Carlo: simulação estocástica."""
     st.header("🎲 Simulação Monte Carlo")
     
     with st.expander("ℹ️ **Sobre esta aba** - Clique para expandir", expanded=False):
@@ -1132,18 +1231,18 @@ def render_monte_carlo(df: pd.DataFrame):
     para obter intervalos de confiança nos resultados.
     """)
     
-    # Parâmetros da simulação
     with st.expander("⚙️ Ajustar Parâmetros", expanded=False):
         col1, col2, col3 = st.columns(3)
         with col1:
-            orcamento = st.slider(
-                "Orçamento (R$ milhões)",
-                min_value=1000.0,
-                max_value=10000.0,
-                value=5000.0,
-                step=500.0,
+            orcamento_bilhoes = st.slider(
+                "Orçamento (R$ bilhões)",
+                min_value=1.0,
+                max_value=20.0,
+                value=5.0,
+                step=1.0,
                 key="mc_orcamento"
             )
+            orcamento = orcamento_bilhoes * 1000  # Converte para milhões
         with col2:
             n_simulacoes = st.selectbox(
                 "Número de Simulações",
@@ -1160,26 +1259,28 @@ def render_monte_carlo(df: pd.DataFrame):
                 step=5,
                 key="mc_variacao"
             )
-        
-        recalcular = st.button("🔄 Recalcular com novos parâmetros", key="btn_mc")
     
-    # Usa cache ou recalcula
-    if recalcular:
-        with st.spinner(f"Executando {n_simulacoes} simulações..."):
+    if st.button("🚀 Executar Simulação Monte Carlo", type="primary", use_container_width=True):
+        with st.spinner(f"Executando {n_simulacoes} simulações... Aguarde..."):
             resultado_mc = executar_monte_carlo(
-                df_dados=df,
+                df,
                 orcamento=orcamento,
                 n_simulacoes=n_simulacoes,
-                incerteza_elasticidade=variacao / 100,
-                incerteza_taxa=variacao / 100 * 0.5,
+                incerteza_elasticidade=variacao/100,
+                incerteza_taxa=variacao/200,
                 verbose=False
             )
-            n_sim_display = n_simulacoes
+            st.session_state['resultado_mc'] = resultado_mc
+            st.session_state['mc_n_sim_display'] = n_simulacoes
+        st.success("✅ Simulação concluída!")
+    
+    if 'resultado_mc' in st.session_state:
+        resultado_mc = st.session_state['resultado_mc']
+        n_sim_display = st.session_state.get('mc_n_sim_display', 250)
     else:
         resultado_mc = obter_monte_carlo_padrao(df)
         n_sim_display = 250
     
-    # Métricas resumo
     st.subheader("📊 Resultados da Simulação")
     
     col1, col2, col3, col4 = st.columns(4)
@@ -1192,7 +1293,6 @@ def render_monte_carlo(df: pd.DataFrame):
     with col4:
         st.metric("IC 95% Superior", f"{resultado_mc.intervalo_confianca_95[1]:.0f}")
     
-    # Histograma
     st.subheader("📈 Distribuição dos Resultados")
     
     fig_hist = go.Figure()
@@ -1211,12 +1311,13 @@ def render_monte_carlo(df: pd.DataFrame):
         title=f"Distribuição de Vidas Salvas ({n_sim_display} simulações)",
         xaxis_title="Vidas Salvas",
         yaxis_title="Frequência",
-        showlegend=False
+        showlegend=False,
+        xaxis=dict(fixedrange=True),
+        yaxis=dict(fixedrange=True)
     )
     
-    st.plotly_chart(fig_hist, use_container_width=True)
+    st.plotly_chart(fig_hist, use_container_width=True, config={'displayModeBar': False, 'scrollZoom': False})
     
-    # Percentis
     st.subheader("📋 Tabela de Percentis")
     
     df_percentis = pd.DataFrame({
@@ -1240,14 +1341,8 @@ def render_monte_carlo(df: pd.DataFrame):
     st.info(f"✅ **Taxa de sucesso:** {resultado_mc.n_sucesso}/{resultado_mc.n_simulacoes} simulações convergiram ({resultado_mc.n_sucesso/resultado_mc.n_simulacoes*100:.1f}%)")
 
 
-# =============================================================================
-# ABA 6: BACKTESTING
-# =============================================================================
-def render_backtesting(df: pd.DataFrame):
-    """
-    Renderiza a aba de backtesting.
-    Valida o modelo usando dados históricos.
-    """
+def render_backtesting(df: pd.DataFrame, ano: int = 2022):
+    """Aba Backtesting: validação histórica."""
     st.header("🔄 Backtesting - Validação Histórica")
     
     with st.expander("ℹ️ **Sobre esta aba** - Clique para expandir", expanded=False):
@@ -1294,7 +1389,6 @@ def render_backtesting(df: pd.DataFrame):
     com resultados reais. Fundamental para validar a abordagem.
     """)
     
-    # Opções de backtesting
     with st.expander("⚙️ Ajustar Parâmetros", expanded=False):
         col1, col2 = st.columns(2)
         with col1:
@@ -1316,7 +1410,6 @@ def render_backtesting(df: pd.DataFrame):
         recalcular = st.button("🔄 Recalcular com novos parâmetros", key="btn_bt")
     
     try:
-        # Usa cache ou recalcula
         if recalcular:
             with st.spinner("Executando validação histórica..."):
                 if metodo == "Janela Deslizante":
@@ -1335,7 +1428,6 @@ def render_backtesting(df: pd.DataFrame):
             st.warning("Dados insuficientes para backtesting.")
             return
         
-        # Calcula métricas agregadas
         mape_medio = resultado_rolling['mape'].mean()
         rmse_medio = resultado_rolling['rmse'].mean()
         corr_media = resultado_rolling['correlacao'].mean() if 'correlacao' in resultado_rolling.columns else 0.8
@@ -1350,7 +1442,6 @@ def render_backtesting(df: pd.DataFrame):
         with col3:
             st.metric("Correlação Média", f"{corr_media:.3f}")
         
-        # Gráfico de evolução do MAPE por ano
         st.subheader("📈 Evolução do MAPE por Ano de Teste")
         fig_rolling = px.line(
             resultado_rolling,
@@ -1362,7 +1453,6 @@ def render_backtesting(df: pd.DataFrame):
         )
         st.plotly_chart(fig_rolling, use_container_width=True)
         
-        # Interpretação
         if mape_medio < 10:
             qualidade = "🟢 Excelente"
             interpretacao = "O modelo tem alta precisão preditiva."
@@ -1382,14 +1472,8 @@ def render_backtesting(df: pd.DataFrame):
         st.error(f"Erro ao executar backtesting: {e}")
 
 
-# =============================================================================
-# ABA 7: MODELO MULTI-PERÍODO
-# =============================================================================
-def render_multi_periodo(df: pd.DataFrame):
-    """
-    Renderiza a aba de otimização multi-período.
-    Planejamento de investimentos ao longo de vários anos.
-    """
+def render_multi_periodo(df: pd.DataFrame, ano: int = 2022):
+    """Aba Multi-Período: planejamento multi-ano."""
     st.header("📅 Otimização Multi-Período")
     
     with st.expander("ℹ️ **Sobre esta aba** - Clique para expandir", expanded=False):
@@ -1433,7 +1517,6 @@ def render_multi_periodo(df: pd.DataFrame):
     considerando que investimentos têm efeitos acumulados e depreciação.
     """)
     
-    # Parâmetros
     with st.expander("⚙️ Ajustar Parâmetros", expanded=False):
         col1, col2 = st.columns(2)
         with col1:
@@ -1458,7 +1541,6 @@ def render_multi_periodo(df: pd.DataFrame):
         recalcular = st.button("🔄 Recalcular com novos parâmetros", key="btn_mp")
     
     try:
-        # Usa cache ou recalcula
         if recalcular:
             with st.spinner("Otimizando para múltiplos períodos..."):
                 orcamento_milhoes = orcamento_total * 1000
@@ -1472,10 +1554,8 @@ def render_multi_periodo(df: pd.DataFrame):
             st.error("Não foi possível calcular as estratégias.")
             return
         
-        # Resultados
         st.subheader("📊 Comparação de Estratégias")
         
-        # Renomeia para exibição
         df_display = df_comparativo.copy()
         df_display['Estratégia'] = df_display['estrategia'].map({
             'Uniforme': '📊 Uniforme (igual cada ano)',
@@ -1504,7 +1584,6 @@ def render_multi_periodo(df: pd.DataFrame):
             hide_index=True
         )
         
-        # Gráfico de barras comparativo
         st.subheader("📈 Crimes Evitados por Estratégia")
         
         fig_bar = px.bar(
@@ -1516,10 +1595,14 @@ def render_multi_periodo(df: pd.DataFrame):
             text='Crimes Evitados'
         )
         fig_bar.update_traces(texttemplate='%{text:,.0f}', textposition='outside')
-        fig_bar.update_layout(showlegend=False)
-        st.plotly_chart(fig_bar, use_container_width=True)
+        fig_bar.update_layout(
+            showlegend=False,
+            dragmode=False,
+            xaxis=dict(fixedrange=True),
+            yaxis=dict(fixedrange=True)
+        )
+        st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False, 'scrollZoom': False})
         
-        # Gráfico de distribuição temporal
         st.subheader("💰 Distribuição Temporal do Investimento")
         
         fig_dist = go.Figure()
@@ -1538,11 +1621,13 @@ def render_multi_periodo(df: pd.DataFrame):
             title="Investimento por Período",
             xaxis_title="Período (ano)",
             yaxis_title="Investimento (R$ bilhões)",
-            legend_title="Estratégia"
+            legend_title="Estratégia",
+            dragmode=False,
+            xaxis=dict(fixedrange=True),
+            yaxis=dict(fixedrange=True)
         )
-        st.plotly_chart(fig_dist, use_container_width=True)
+        st.plotly_chart(fig_dist, use_container_width=True, config={'displayModeBar': False, 'scrollZoom': False})
         
-        # Explicação
         st.markdown("---")
         st.markdown("""
         ### 💡 Por que Frontloaded funciona melhor?
@@ -1560,14 +1645,9 @@ def render_multi_periodo(df: pd.DataFrame):
         st.error(f"Erro ao calcular multi-período: {e}")
 
 
-# =============================================================================
-# ABA 8: CONCLUSÕES E EFICIÊNCIA DOS INVESTIMENTOS
-# =============================================================================
-def render_conclusoes(df: pd.DataFrame):
-    """
-    Renderiza a aba de Conclusões com análise de eficiência de investimentos por estado.
-    """
-    st.header("📋 Conclusões - Eficiência dos Investimentos")
+def render_conclusoes(df: pd.DataFrame, ano: int = 2022):
+    """Aba Conclusões: eficiência DEA e insights finais."""
+    st.header(f"📋 Conclusões - Eficiência dos Investimentos ({ano})")
     
     with st.expander("ℹ️ **Sobre esta aba** - Clique para expandir", expanded=False):
         st.markdown("""
@@ -1581,9 +1661,8 @@ def render_conclusoes(df: pd.DataFrame):
         | Métrica | Fórmula | Interpretação |
         |---------|---------|---------------|
         | **Gasto per capita** | Orçamento ÷ População | Quanto cada estado investe por habitante |
-        | **Custo por morte evitada** | Orçamento ÷ Mortes evitáveis | Quanto custa reduzir 1 morte |
-        | **Elasticidade** | % redução crime ÷ % aumento invest. | Sensibilidade do crime ao investimento |
-        | **Eficiência relativa** | Comparação com média nacional | Desempenho vs. outros estados |
+        | **Taxa de homicídios** | Mortes ÷ População × 100.000 | Nível de violência por 100 mil habitantes |
+        | **Eficiência DEA** | Resultado ÷ Custo (relativo) | Desempenho vs. outros estados |
         
         #### Fontes de dados:
         - **Violência**: Atlas da Violência (IPEA/FBSP) - série 1989-2022
@@ -1591,19 +1670,13 @@ def render_conclusoes(df: pd.DataFrame):
         - **População**: IBGE - Censo/Estimativas 2022
         """)
     
-    # Obtém resultado da otimização
     resultado = obter_otimizacao_padrao(df)
     
-    # Calcula índice de eficiência para usar nas respostas
-    df_efic_calc = df.copy()
-    df_efic_calc['indice_eficiencia'] = (
-        (df_efic_calc['gasto_per_capita'] / df_efic_calc['gasto_per_capita'].mean()) / 
-        (df_efic_calc['taxa_mortes_100k'] / df_efic_calc['taxa_mortes_100k'].mean())
-    ).round(2)
+    df_efic_calc = calcular_dea_ccr(df)
+    resumo_efic = resumo_dea(df_efic_calc)
     
-    # Estados mais e menos eficientes
-    top5_efic = df_efic_calc.nlargest(5, 'indice_eficiencia')
-    bottom5_efic = df_efic_calc.nsmallest(5, 'indice_eficiencia')
+    top5_efic = df_efic_calc.head(5)
+    bottom5_efic = df_efic_calc.tail(5).iloc[::-1]
     
     st.markdown("""
     ### 🎯 Pergunta Central do Estudo
@@ -1622,25 +1695,25 @@ def render_conclusoes(df: pd.DataFrame):
     col_resp1, col_resp2 = st.columns(2)
     
     with col_resp1:
-        st.markdown("### 🏆 Estados MAIS Eficientes")
-        st.markdown("*Conseguem baixa violência com os recursos disponíveis*")
+        st.markdown("### 🏆 Estados MAIS Eficientes (DEA)")
+        st.markdown("*Fronteira de eficiência - referência de boas práticas*")
         for i, (_, row) in enumerate(top5_efic.iterrows(), 1):
             st.markdown(f"""
             **{i}º {row['estado']}** ({row['sigla']})  
             - Gasto: R$ {row['gasto_per_capita']:,.0f}/hab  
             - Taxa: {row['taxa_mortes_100k']:.1f}/100k  
-            - Índice: **{row['indice_eficiencia']:.2f}**
+            - Eficiência DEA: **{row['eficiencia_percentual']:.1f}%**
             """)
     
     with col_resp2:
-        st.markdown("### ⚠️ Estados MENOS Eficientes")
-        st.markdown("*Alta violência apesar do investimento*")
+        st.markdown("### ⚠️ Estados MENOS Eficientes (DEA)")
+        st.markdown("*Maior potencial de melhoria*")
         for i, (_, row) in enumerate(bottom5_efic.iterrows(), 1):
             st.markdown(f"""
             **{i}º {row['estado']}** ({row['sigla']})  
             - Gasto: R$ {row['gasto_per_capita']:,.0f}/hab  
             - Taxa: {row['taxa_mortes_100k']:.1f}/100k  
-            - Índice: **{row['indice_eficiencia']:.2f}**
+            - Eficiência DEA: **{row['eficiencia_percentual']:.1f}%**
             """)
     
     st.markdown("---")
@@ -1653,172 +1726,87 @@ def render_conclusoes(df: pd.DataFrame):
     uma redução de **{resultado.reducao_percentual:.2f}%** nas mortes violentas.
     
     Os estados que **mais se beneficiariam** são aqueles com:
-    - Alta elasticidade (respondem bem a investimentos)
     - Alto número absoluto de mortes (maior potencial de impacto)
     - Baixo gasto per capita atual (margem para crescimento)
+    - Alta taxa de homicídios (maior urgência)
     """)
     
     st.markdown("---")
     
-    # =========================================================================
-    # SEÇÃO 1: RANKING DE EFICIÊNCIA ATUAL
-    # =========================================================================
-    st.subheader("🏆 Ranking de Eficiência Atual (2022)")
+    st.subheader("🏆 Ranking de Eficiência - Análise Envoltória de Dados (DEA)")
     
     st.markdown("""
-    Comparamos o **gasto per capita** com a **taxa de violência** para identificar 
-    estados que conseguem melhores resultados com menos recursos.
+    Utilizamos **DEA (Data Envelopment Analysis)** - método de Pesquisa Operacional 
+    para medir a eficiência relativa de cada estado, comparando **resultado** (baixa taxa de homicídios) 
+    com **custo** (gasto per capita).
+    
+    **Pesos do Modelo:**
+    - **75%** - Resultado (quanto menor a taxa de homicídios, melhor)
+    - **25%** - Economia (quanto menor o gasto para o mesmo resultado, melhor)
     """)
     
-    # Calcula índice de eficiência
-    df_efic = df.copy()
-    df_efic['indice_eficiencia'] = (
-        (df_efic['gasto_per_capita'] / df_efic['gasto_per_capita'].mean()) / 
-        (df_efic['taxa_mortes_100k'] / df_efic['taxa_mortes_100k'].mean())
-    ).round(2)
+    df_dea = calcular_dea_ccr(df)
+    resumo = resumo_dea(df_dea)
     
-    # Categoriza eficiência
-    def categorizar_eficiencia(row):
-        if row['indice_eficiencia'] > 1.5:
+    col_m1, col_m2, col_m3 = st.columns(3)
+    with col_m1:
+        st.metric("Eficiência Média", f"{resumo['eficiencia_media']*100:.1f}%")
+    with col_m2:
+        st.metric("Maior Eficiência", f"{resumo['eficiencia_max']*100:.1f}%")
+    with col_m3:
+        st.metric("Menor Eficiência", f"{resumo['eficiencia_min']*100:.1f}%")
+    
+    st.markdown("---")
+    
+    def categorizar_eficiencia_dea(ef):
+        if ef >= 0.8:
             return '🟢 Alta eficiência'
-        elif row['indice_eficiencia'] > 0.8:
+        elif ef >= 0.5:
             return '🟡 Média eficiência'
         else:
             return '🔴 Baixa eficiência'
     
-    df_efic['categoria'] = df_efic.apply(categorizar_eficiencia, axis=1)
+    df_dea['categoria'] = df_dea['eficiencia_dea'].apply(categorizar_eficiencia_dea)
     
-    col1, col2 = st.columns(2)
+    st.markdown("### 📋 Ranking Completo de Eficiência - Todos os Estados")
     
-    with col1:
-        st.markdown("#### Estados MAIS Eficientes")
-        st.markdown("*Alto gasto per capita, baixa taxa de violência*")
-        
-        top_eficientes = df_efic.nlargest(10, 'indice_eficiencia')[
-            ['estado', 'sigla', 'gasto_per_capita', 'taxa_mortes_100k', 'indice_eficiencia', 'categoria']
-        ]
-        top_eficientes.columns = ['Estado', 'UF', 'Gasto/capita', 'Taxa/100k', 'Índice', 'Categoria']
-        
-        st.dataframe(
-            top_eficientes.style.format({
-                'Gasto/capita': 'R$ {:,.0f}',
-                'Taxa/100k': '{:.1f}',
-                'Índice': '{:.2f}'
-            }),
-            use_container_width=True,
-            hide_index=True
-        )
+    df_ranking = df_dea[['estado', 'sigla', 'regiao', 'gasto_per_capita', 'taxa_mortes_100k', 'eficiencia_percentual', 'categoria']].copy()
+    df_ranking.columns = ['Estado', 'UF', 'Região', 'Gasto/capita', 'Taxa/100k', 'Eficiência %', 'Status']
+    df_ranking['Ranking'] = range(1, len(df_ranking) + 1)
+    df_ranking = df_ranking[['Ranking', 'Estado', 'UF', 'Região', 'Gasto/capita', 'Taxa/100k', 'Eficiência %', 'Status']]
     
-    with col2:
-        st.markdown("#### Estados MENOS Eficientes")
-        st.markdown("*Gasto não proporcional aos resultados*")
-        
-        bottom_eficientes = df_efic.nsmallest(10, 'indice_eficiencia')[
-            ['estado', 'sigla', 'gasto_per_capita', 'taxa_mortes_100k', 'indice_eficiencia', 'categoria']
-        ]
-        bottom_eficientes.columns = ['Estado', 'UF', 'Gasto/capita', 'Taxa/100k', 'Índice', 'Categoria']
-        
-        st.dataframe(
-            bottom_eficientes.style.format({
-                'Gasto/capita': 'R$ {:,.0f}',
-                'Taxa/100k': '{:.1f}',
-                'Índice': '{:.2f}'
-            }),
-            use_container_width=True,
-            hide_index=True
-        )
-    
-    # Gráfico de eficiência
-    fig_efic = px.scatter(
-        df_efic,
-        x='gasto_per_capita',
-        y='taxa_mortes_100k',
-        size='populacao',
-        color='indice_eficiencia',
-        color_continuous_scale='RdYlGn',
-        hover_name='estado',
-        text='sigla',
-        labels={
-            'gasto_per_capita': 'Gasto Per Capita (R$)',
-            'taxa_mortes_100k': 'Taxa de Mortes/100k hab.',
-            'indice_eficiencia': 'Índice de Eficiência'
-        },
-        title="Mapa de Eficiência: Gasto vs. Resultado"
+    st.dataframe(
+        df_ranking.style.format({
+            'Gasto/capita': 'R$ {:,.0f}',
+            'Taxa/100k': '{:.1f}',
+            'Eficiência %': '{:.1f}%'
+        }),
+        use_container_width=True,
+        hide_index=True,
+        height=700
     )
-    fig_efic.update_traces(textposition='top center')
-    fig_efic.update_layout(height=500)
-    
-    # Adiciona linha de tendência ideal (quanto mais se gasta, menor deveria ser a taxa)
-    st.plotly_chart(fig_efic, use_container_width=True)
     
     st.info("""
-    💡 **Interpretação:** Estados no canto **inferior direito** (alto gasto, baixa violência) 
-    são os mais eficientes. Estados no canto **superior esquerdo** (baixo gasto, alta violência) 
-    precisam de mais recursos e/ou melhor gestão.
+    💡 **Interpretação:** 
+    - A eficiência é **relativa** - compara cada estado com o melhor desempenho
+    - **75% do peso** é dado ao **resultado** (baixa taxa de homicídios)
+    - **25% do peso** é dado à **economia** (baixo gasto per capita)
+    - Estados com alta eficiência conseguem bons resultados de segurança
     """)
     
     st.markdown("---")
     
-    # =========================================================================
-    # SEÇÃO 2: ANÁLISE DE ELASTICIDADE
-    # =========================================================================
-    st.subheader("📈 Elasticidade Crime-Investimento por Estado")
-    
-    st.markdown("""
-    A **elasticidade** mede quanto o crime responde a variações no investimento.
-    Estados com **maior elasticidade** são os que mais se beneficiam de investimentos adicionais.
-    """)
-    
-    # Usa elasticidade já calculada
-    df_elast = df[['sigla', 'estado', 'regiao', 'elasticidade']].copy()
-    df_elast = df_elast.sort_values('elasticidade', ascending=False)
-    
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        fig_elast = px.bar(
-            df_elast,
-            x='sigla',
-            y='elasticidade',
-            color='regiao',
-            labels={'elasticidade': 'Elasticidade', 'sigla': 'Estado'},
-            title="Elasticidade por Estado (ordenado)"
-        )
-        fig_elast.update_layout(height=400)
-        st.plotly_chart(fig_elast, use_container_width=True)
-    
-    with col2:
-        st.markdown("#### Interpretação da Elasticidade")
-        st.markdown("""
-        | Valor | Significado |
-        |-------|-------------|
-        | **> 0.5** | Alta sensibilidade - investimento tem grande impacto |
-        | **0.2 - 0.5** | Sensibilidade moderada |
-        | **< 0.2** | Baixa sensibilidade - outros fatores dominam |
-        
-        **Estados com alta elasticidade** devem ser priorizados 
-        em uma estratégia de otimização.
-        """)
-    
-    st.markdown("---")
-    
-    # =========================================================================
-    # SEÇÃO 3: PRINCIPAIS CONCLUSÕES
-    # =========================================================================
     st.subheader("📝 Principais Conclusões do Estudo")
     
-    # Calcula estatísticas para conclusões
     total_mortes = df['mortes_violentas'].sum()
     total_orcamento = df['orcamento_2022_milhoes'].sum()
     media_taxa = df['taxa_mortes_100k'].mean()
     
-    # Estados extremos
     estado_mais_violento = df.loc[df['taxa_mortes_100k'].idxmax()]
     estado_menos_violento = df.loc[df['taxa_mortes_100k'].idxmin()]
     estado_maior_gasto = df.loc[df['gasto_per_capita'].idxmax()]
     estado_menor_gasto = df.loc[df['gasto_per_capita'].idxmin()]
     
-    # Resultados da otimização
     vidas_salvas = resultado.reducao_crimes
     reducao_pct = resultado.reducao_percentual
     
@@ -1855,92 +1843,11 @@ def render_conclusoes(df: pd.DataFrame):
         top3 = resultado.alocacao.nlargest(3, 'reducao_mortes')[['estado', 'reducao_mortes']]
         for _, row in top3.iterrows():
             st.markdown(f"- **{row['estado']}**: {row['reducao_mortes']:,.0f} vidas")
-    
-    st.markdown("---")
-    
-    # =========================================================================
-    # SEÇÃO 4: RECOMENDAÇÕES
-    # =========================================================================
-    st.subheader("💡 Recomendações Baseadas nos Dados")
-    
-    st.markdown("""
-    Com base na análise de Pesquisa Operacional realizada, recomendamos:
-    
-    #### 1. Priorização por Elasticidade
-    Estados com **maior elasticidade** (maior resposta ao investimento) devem receber 
-    proporcionalmente mais recursos, pois o retorno em vidas salvas é maior.
-    
-    #### 2. Limite de Concentração
-    O modelo inclui **restrição de investimento máximo** por estado para evitar que 
-    recursos se concentrem em poucos estados, garantindo cobertura nacional.
-    
-    #### 3. Investimento Frontloaded
-    Análise multi-período demonstra que **investir mais cedo** gera resultados acumulados 
-    superiores a investir uniformemente ou postergar recursos.
-    
-    #### 4. Monitoramento Contínuo
-    Os resultados do **backtesting** indicam que o modelo tem boa capacidade preditiva,
-    mas deve ser recalibrado anualmente com novos dados.
-    
-    #### 5. Gestão, não apenas Recursos
-    Estados com **baixa eficiência** mesmo com alto gasto per capita precisam de 
-    **melhorias na gestão**, não apenas mais recursos.
-    """)
-    
-    st.markdown("---")
-    
-    # =========================================================================
-    # SEÇÃO 5: FONTES DOS DADOS
-    # =========================================================================
-    st.subheader("📚 Fontes dos Dados")
-    
-    st.markdown("""
-    #### Dados de Violência
-    
-    | Fonte | Descrição | Período | Link Direto |
-    |-------|-----------|---------|-------------|
-    | **Atlas da Violência (IPEA/FBSP)** | Taxas de homicídios por UF | 1989-2022 | [Download dos dados](https://www.ipea.gov.br/atlasviolencia/dados-series/40) |
-    | **DATASUS/SIM** | Sistema de Informação sobre Mortalidade (fonte primária) | 1996-2022 | [TabNet DATASUS](http://tabnet.datasus.gov.br/cgi/deftohtm.exe?sim/cnv/obt10uf.def) |
-    
-    #### Dados de Orçamento/Investimento
-    
-    | Fonte | Descrição | Período | Link Direto |
-    |-------|-----------|---------|-------------|
-    | **Anuário FBSP 2023** | Tabela 54: Despesas com Função Segurança Pública | 2021-2022 | [Download Excel](https://forumseguranca.org.br/estatisticas/) |
-    | **SICONFI** | Execução orçamentária estadual (fonte primária) | 2013-2022 | [Portal SICONFI](https://siconfi.tesouro.gov.br/siconfi/pages/public/consulta_finbra/finbra_list.jsf) |
-    
-    #### Dados Demográficos
-    
-    | Fonte | Descrição | Período | Link Direto |
-    |-------|-----------|---------|-------------|
-    | **IBGE - SIDRA** | Projeção populacional por UF | 2022 | [Tabela 6579](https://sidra.ibge.gov.br/tabela/6579) |
-    
-    #### Arquivos Utilizados no Projeto
-    
-    | Arquivo | Conteúdo | Fonte Original |
-    |---------|----------|----------------|
-    | `taxa_homicidios_jovens.csv` | Taxa de homicídios 15-29 anos, 1989-2022 | Atlas da Violência/IPEA |
-    | `mortes_populacao_2022.csv` | MVI + população por UF em 2022 | FBSP + IBGE |
-    | `anuario_fbsp_2023.xlsx` | Anuário completo com tabelas de orçamento | FBSP |
-    
-    #### ⚠️ Limitações dos Dados
-    
-    | Limitação | Impacto | Mitigação |
-    |-----------|---------|-----------|
-    | **Tocantins sem dados de orçamento** | Usamos estimativa | Média da região Norte |
-    | **Orçamento apenas 2021-2022** | Elasticidades menos precisas | Usamos série de violência como proxy |
-    | **Subnotificação** | Varia entre estados | Limitação conhecida |
-    | **Definição de MVI** | Pode variar entre UFs | Seguimos metodologia FBSP |
-    """)
 
 
-# =============================================================================
-# FUNÇÃO PRINCIPAL
-# =============================================================================
 def main():
     """Função principal da aplicação."""
     
-    # Título principal
     st.markdown('<h1 class="main-header">🔐 Otimização de Recursos de Segurança Pública</h1>', 
                 unsafe_allow_html=True)
     st.markdown("""
@@ -1951,62 +1858,66 @@ def main():
     
     st.markdown("---")
     
-    # Carrega dados
+    ano_selecionado = render_sidebar()
+    
     try:
-        df = carregar_dados()
+        df = carregar_dados(ano=ano_selecionado)
         geojson = carregar_geojson_brasil()
     except Exception as e:
         st.error(f"Erro ao carregar dados: {e}")
         st.stop()
     
-    # Renderiza sidebar
-    render_sidebar()
-    
-    # Abas principais - 8 abas com todas as funcionalidades
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+    ABAS = [
         "📊 Dashboard",
         "⚙️ Otimização",
-        "📈 Comparativo",
-        "🔍 Sensibilidade",
         "🎲 Monte Carlo",
-        "🔄 Backtesting",
         "📅 Multi-Período",
         "📋 Conclusões"
-    ])
+    ]
     
-    with tab1:
-        render_dashboard(df, geojson)
+    query_params = st.query_params
+    aba_param = query_params.get("aba", "0")
+    try:
+        aba_index = int(aba_param)
+        if aba_index < 0 or aba_index >= len(ABAS):
+            aba_index = 0
+    except:
+        aba_index = 0
     
-    with tab2:
-        render_otimizacao(df)
+    aba_selecionada = st.radio(
+        "Navegação",
+        options=ABAS,
+        index=aba_index,
+        horizontal=True,
+        label_visibility="collapsed",
+        key="aba_principal"
+    )
     
-    with tab3:
-        render_comparativo(df)
+    novo_index = ABAS.index(aba_selecionada)
+    if novo_index != aba_index:
+        st.query_params["aba"] = str(novo_index)
     
-    with tab4:
-        render_sensibilidade(df)
+    st.markdown("---")
     
-    with tab5:
-        render_monte_carlo(df)
+    if aba_selecionada == "📊 Dashboard":
+        render_dashboard(df, geojson, ano_selecionado)
+    elif aba_selecionada == "⚙️ Otimização":
+        render_otimizacao(df, ano_selecionado)
+    elif aba_selecionada == "🎲 Monte Carlo":
+        render_monte_carlo(df, ano_selecionado)
+    elif aba_selecionada == "📅 Multi-Período":
+        render_multi_periodo(df, ano_selecionado)
+    elif aba_selecionada == "📋 Conclusões":
+        render_conclusoes(df, ano_selecionado)
     
-    with tab6:
-        render_backtesting(df)
-    
-    with tab7:
-        render_multi_periodo(df)
-    
-    with tab8:
-        render_conclusoes(df)
-    
-    # Footer
     st.markdown("---")
     st.markdown("""
     <div style="text-align: center; color: #888; font-size: 0.9rem;">
         <p><strong>Trabalho Acadêmico - Pesquisa Operacional</strong></p>
         <p>
             Dados: <a href="https://www.ipea.gov.br/atlasviolencia/" target="_blank">Atlas da Violência (IPEA)</a> | 
-            <a href="https://forumseguranca.org.br/anuario-brasileiro-seguranca-publica/" target="_blank">Anuário FBSP 2023</a> | 
-            <a href="https://www.ibge.gov.br/" target="_blank">IBGE</a>
+            <a href="https://forumseguranca.org.br/anuario-brasileiro-seguranca-publica/" target="_blank">Anuário FBSP</a> | 
+            <a href="https://siconfi.tesouro.gov.br/" target="_blank">SICONFI</a>
         </p>
         <p>
             Método: Programação Linear (Simplex) via <a href="https://github.com/coin-or/pulp" target="_blank">PuLP/CBC</a> | 

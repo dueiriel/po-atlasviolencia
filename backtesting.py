@@ -44,16 +44,13 @@ class ResultadoBacktest:
 
 
 def carregar_serie_completa() -> pd.DataFrame:
-    """Carrega série histórica completa de homicídios."""
-    dados_dir = Path(__file__).parent / "dados"
-    arquivo = dados_dir / "taxa_homicidios_jovens.csv"
+    """Carrega série histórica completa de homicídios (2013-2023) dos novos dados."""
+    # Importa do módulo dados para usar os dados novos
+    from dados import carregar_taxa_homicidios_historico
     
-    df = pd.read_csv(arquivo, sep=';')
+    df = carregar_taxa_homicidios_historico()
     df = df.rename(columns={
-        'cod': 'cod_uf',
-        'nome': 'estado',
-        'período': 'ano',
-        'valor': 'taxa_homicidios'
+        'taxa_homicidios_100k': 'taxa_homicidios'
     })
     
     return df

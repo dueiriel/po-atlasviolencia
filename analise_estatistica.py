@@ -42,20 +42,19 @@ class ResultadoRegressao:
 
 def carregar_serie_historica() -> pd.DataFrame:
     """
-    Carrega a série histórica completa de taxa de homicídios (1989-2022).
+    Carrega a série histórica completa de taxa de homicídios (2013-2023).
+    
+    Usa os novos dados de dados/dados.novos.
     
     Returns:
-        DataFrame com colunas: cod_uf, estado, ano, taxa_homicidios
+        DataFrame com colunas: sigla, estado, ano, taxa_homicidios
     """
-    dados_dir = Path(__file__).parent / "dados"
-    arquivo = dados_dir / "taxa_homicidios_jovens.csv"
+    # Importa do módulo dados para usar os dados novos
+    from dados import carregar_taxa_homicidios_historico
     
-    df = pd.read_csv(arquivo, sep=';')
+    df = carregar_taxa_homicidios_historico()
     df = df.rename(columns={
-        'cod': 'cod_uf',
-        'nome': 'estado',
-        'período': 'ano',
-        'valor': 'taxa_homicidios'
+        'taxa_homicidios_100k': 'taxa_homicidios'
     })
     
     return df
@@ -268,9 +267,24 @@ def atualizar_elasticidade_dados(df_dados: pd.DataFrame) -> pd.DataFrame:
     # Gera relatório de elasticidade
     df_elast = gerar_relatorio_elasticidade()
     
-    # Cria mapeamento sigla -> elasticidade (df_elast usa siglas em 'estado')
+    # Mapeamento de nome de estado para sigla
+    estado_para_sigla = {
+        'Acre': 'AC', 'Alagoas': 'AL', 'Amapá': 'AP', 'Amazonas': 'AM',
+        'Bahia': 'BA', 'Ceará': 'CE', 'Distrito Federal': 'DF',
+        'Espírito Santo': 'ES', 'Goiás': 'GO', 'Maranhão': 'MA',
+        'Mato Grosso': 'MT', 'Mato Grosso do Sul': 'MS', 'Minas Gerais': 'MG',
+        'Pará': 'PA', 'Paraíba': 'PB', 'Paraná': 'PR', 'Pernambuco': 'PE',
+        'Piauí': 'PI', 'Rio de Janeiro': 'RJ', 'Rio Grande do Norte': 'RN',
+        'Rio Grande do Sul': 'RS', 'Rondônia': 'RO', 'Roraima': 'RR',
+        'Santa Catarina': 'SC', 'São Paulo': 'SP', 'Sergipe': 'SE', 'Tocantins': 'TO'
+    }
+    
+    # Converte nome do estado para sigla no relatório de elasticidade
+    df_elast['sigla'] = df_elast['estado'].map(estado_para_sigla)
+    
+    # Cria mapeamento sigla -> elasticidade
     mapa_elasticidade = dict(zip(
-        df_elast['estado'], 
+        df_elast['sigla'], 
         df_elast['elasticidade_calculada']
     ))
     
