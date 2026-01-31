@@ -156,8 +156,8 @@ Os estados com maior **elasticidade** (resposta ao investimento) e alta taxa de 
 ## Instalação
 
 ```bash
-git clone https://github.com/dueiriel/po-atlasviolencia.git
-cd po-atlasviolencia
+git clone https://github.com/dueiriel/po-otimizacaoviolencia.git
+cd po-otimizacaoviolencia
 
 python -m venv venv
 source venv/bin/activate   # Linux/Mac

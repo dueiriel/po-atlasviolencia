@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from dados import carregar_dados_consolidados
 from otimizacao import otimizar_alocacao
 from analise_estatistica import gerar_relatorio_elasticidade
+from dea import calcular_dea_ccr
 
 # Configurações
 FIGURAS_DIR = Path(__file__).parent / "latex" / "figuras"
@@ -108,38 +109,34 @@ def fig2_gasto_vs_violencia(df):
     plt.close()
 
 def fig3_eficiencia(df):
-    """Figura 3: Índice de eficiência por estado."""
-    print("Gerando Figura 3: Eficiência...")
+    """Figura 3: Índice de eficiência por estado usando DEA 75/25."""
+    print("Gerando Figura 3: Eficiência (DEA 75/25)...")
     
-    # Calcula índice de eficiência
-    # Fórmula: (taxa_média / taxa_estado) / (gasto_estado / gasto_médio)
-    # Quanto MENOR a taxa e MENOR o gasto, MAIOR o índice (mais eficiente)
-    df_efic = df.copy()
-    df_efic['indice_eficiencia'] = (
-        (df_efic['taxa_mortes_100k'].mean() / df_efic['taxa_mortes_100k']) / 
-        (df_efic['gasto_per_capita'] / df_efic['gasto_per_capita'].mean())
-    )
-    df_efic = df_efic.sort_values('indice_eficiencia', ascending=True)
+    # Usa o mesmo cálculo DEA da aplicação principal
+    # 75% peso no resultado (baixa taxa) + 25% peso na economia (baixo gasto)
+    df_efic = calcular_dea_ccr(df)
+    df_efic = df_efic.sort_values('eficiencia_percentual', ascending=True)
     
     fig, ax = plt.subplots(figsize=(10, 8))
     
-    colors = ['#d73027' if x < 0.8 else '#fee08b' if x < 1.5 else '#1a9850' 
-              for x in df_efic['indice_eficiencia']]
+    # Cores: verde (>70%), amarelo (40-70%), vermelho (<40%)
+    colors = ['#d73027' if x < 40 else '#fee08b' if x < 70 else '#1a9850' 
+              for x in df_efic['eficiencia_percentual']]
     
-    bars = ax.barh(df_efic['sigla'], df_efic['indice_eficiencia'], color=colors)
+    bars = ax.barh(df_efic['sigla'], df_efic['eficiencia_percentual'], color=colors)
     
-    ax.axvline(x=1.0, color='black', linestyle='--', linewidth=1, label='Média nacional')
+    ax.axvline(x=50, color='black', linestyle='--', linewidth=1, label='50%')
     
-    ax.set_xlabel('Índice de Eficiência (maior = melhor)')
+    ax.set_xlabel('Eficiência DEA (%)')
     ax.set_ylabel('Estado')
-    ax.set_title('Eficiência no Uso de Recursos de Segurança Pública (2022)')
+    ax.set_title('Eficiência no Uso de Recursos de Segurança Pública (2023)\nDEA: 75% Resultado + 25% Economia')
     
     # Legenda manual
     from matplotlib.patches import Patch
     legend_elements = [
-        Patch(facecolor='#1a9850', label='Alta eficiência (>1.5)'),
-        Patch(facecolor='#fee08b', label='Média eficiência (0.8-1.5)'),
-        Patch(facecolor='#d73027', label='Baixa eficiência (<0.8)')
+        Patch(facecolor='#1a9850', label='Alta eficiência (>70%)'),
+        Patch(facecolor='#fee08b', label='Média eficiência (40-70%)'),
+        Patch(facecolor='#d73027', label='Baixa eficiência (<40%)')
     ]
     ax.legend(handles=legend_elements, loc='lower right')
     
