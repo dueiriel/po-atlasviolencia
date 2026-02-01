@@ -307,9 +307,10 @@ def main():
     fig3_eficiencia(df)
     resultado = fig4_otimizacao(df)
     fig5_alocacao_otima(df, resultado)
-    # fig6_elasticidade(df)  # Removido - não utilizado
-    # fig7_regiao(df)  # Removido - não utilizado
-    fig8_sensibilidade()
+    # fig4_otimizacao - Removido do LaTeX
+    # fig6_elasticidade - Removido
+    # fig7_regiao - Removido
+    # fig8_sensibilidade - Removido do LaTeX
     
     print("="*60)
     print(f"Figuras salvas em: {FIGURAS_DIR}")

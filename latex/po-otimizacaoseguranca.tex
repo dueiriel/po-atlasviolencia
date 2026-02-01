@@ -167,7 +167,7 @@
 \end{center}
 
 \noindent
-Este trabalho aplica técnicas de Programação Linear para otimizar a alocação de recursos de segurança pública entre os 27 estados brasileiros. Utilizando dados reais do Anuário Brasileiro de Segurança Pública (FBSP) no período de 2013-2023, desenvolvemos um modelo matemático que determina a distribuição ótima de um orçamento suplementar visando minimizar o número de mortes violentas. O modelo considera a elasticidade crime-investimento de cada estado, calculada por regressão sobre 11 anos de dados históricos (2013-2023). Os resultados indicam que, com um investimento adicional de R\$ 5 bilhões distribuído de forma otimizada, seria possível salvar aproximadamente 1.875 vidas por ano. Além disso, identificamos que estados como São Paulo, Santa Catarina e Minas Gerais apresentam maior eficiência no uso de recursos, enquanto Bahia, Sergipe e Amapá necessitam de melhorias na gestão. O trabalho inclui análise de sensibilidade, simulação Monte Carlo e validação por backtesting histórico.\\[0.5cm]
+Este trabalho aplica técnicas de Programação Linear para otimizar a alocação de recursos de segurança pública entre os 27 estados brasileiros. Utilizando dados reais do Anuário Brasileiro de Segurança Pública (FBSP) no período de 2013-2023, desenvolvemos um modelo matemático que determina a distribuição ótima de um orçamento suplementar visando minimizar o número de mortes violentas. Os resultados indicam que, com um investimento adicional de R\$ 5 bilhões distribuído de forma otimizada, seria possível salvar aproximadamente 1.875 vidas por ano. Além disso, identificamos que estados como São Paulo, Santa Catarina e Distrito Federal apresentam maior eficiência no uso de recursos. O trabalho inclui simulação Monte Carlo para validação dos resultados.\\[0.5cm]
 
 \noindent
 \textbf{Palavras-chave:} Pesquisa Operacional. Programação Linear. Segurança Pública. Otimização. Simplex.
@@ -249,16 +249,6 @@ Onde $\mathbf{c}$ é o vetor de coeficientes da função objetivo, $\mathbf{x}$ 
 \subsection{Método Simplex}
 
 O método Simplex, desenvolvido por George Dantzig em 1947, é o algoritmo mais utilizado para resolver problemas de Programação Linear. O algoritmo percorre os vértices da região viável, movendo-se sempre para vértices adjacentes que melhorem o valor da função objetivo, até encontrar o ótimo (WINSTON, 2003).
-
-\subsection{Análise de Sensibilidade}
-
-A análise de sensibilidade avalia como variações nos parâmetros do modelo afetam a solução ótima. Os principais conceitos são:
-
-\begin{itemize}
-    \setlength{\itemsep}{0pt}
-    \item \textbf{Shadow Price (Preço Sombra):} Indica quanto a função objetivo melhoraria se uma restrição fosse relaxada em uma unidade;
-    \item \textbf{Intervalo de Otimalidade:} Faixa de valores que um coeficiente pode assumir sem alterar a base ótima.
-\end{itemize}
 
 \subsection{Simulação Monte Carlo}
 
@@ -407,8 +397,7 @@ A escolha do PuLP com CBC se justifica por:
     \setlength{\itemsep}{0pt}
     \item \textbf{Licença open-source:} Permite reprodutibilidade e auditoria do código;
     \item \textbf{Performance adequada:} Para problemas de médio porte (27 variáveis, 55 restrições), o CBC resolve em menos de 1 segundo;
-    \item \textbf{Integração com Python:} Facilita a integração com bibliotecas de análise de dados (Pandas, NumPy) e visualização (Plotly);
-    \item \textbf{Suporte a análise de sensibilidade:} O PuLP permite extrair shadow prices e intervalos de otimalidade diretamente da solução.
+    \item \textbf{Integração com Python:} Facilita a integração com bibliotecas de análise de dados (Pandas, NumPy) e visualização (Plotly).
 \end{enumerate}
 
 \subsubsection{Estrutura do Código}
@@ -491,15 +480,7 @@ Os cinco menos eficientes são: Amapá (16,9\%), Mato Grosso (25,3\%), Roraima (
 
 \subsection{Resultado da Otimização}
 
-Executamos o modelo com orçamento suplementar de R\$ 5 bilhões. A Figura 4 compara o cenário atual com o cenário otimizado.
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.9\textwidth]{fig4_otimizacao.pdf}
-    \caption{Comparativo antes vs. depois da otimização}
-    \label{fig:otimizacao}
-    \footnotesize{Fonte: Elaboração própria (2026).}
-\end{figure}
+Executamos o modelo com orçamento suplementar de R\$ 5 bilhões.
 
 \begin{table}[H]
 \centering
@@ -522,7 +503,7 @@ Custo médio por vida & R\$ 2,67 milhões \\
 
 \subsection{Alocação Ótima}
 
-A Figura 5 mostra quanto cada estado deve receber segundo o modelo.
+A Figura 4 mostra quanto cada estado deve receber segundo o modelo.
 
 \begin{figure}[H]
     \centering
@@ -532,21 +513,7 @@ A Figura 5 mostra quanto cada estado deve receber segundo o modelo.
     \footnotesize{Fonte: Elaboração própria (2026).}
 \end{figure}
 
-Os estados que mais recebem são aqueles com alta elasticidade (respondem bem a investimentos), alto número absoluto de mortes (maior potencial de impacto) e margem para aumento (orçamento atual não está no limite).
-
-\subsection{Análise de Sensibilidade}
-
-A Figura 6 mostra como o resultado varia com diferentes orçamentos.
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.8\textwidth]{fig8_sensibilidade.pdf}
-    \caption{Sensibilidade do resultado ao orçamento}
-    \label{fig:sensibilidade}
-    \footnotesize{Fonte: Elaboração própria (2026).}
-\end{figure}
-
-O shadow price do orçamento é aproximadamente 0,37 vidas/R\$ milhão, indicando que cada R\$ 1 milhão adicional salva, em média, 0,37 vidas.
+Os estados que mais recebem são aqueles com alto número absoluto de mortes (maior potencial de impacto) e margem para aumento (orçamento atual não está no limite).
 
 \subsection{Simulação Monte Carlo}
 
